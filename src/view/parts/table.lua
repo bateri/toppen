@@ -433,6 +433,9 @@ local function select_row(row)
 	T.selected = ref(row)
 	set({ selected = T.selected })
 	keyed()
+	if act.follow ~= nil then
+		act.follow(row)
+	end
 end
 
 local function selected_row()
@@ -440,6 +443,37 @@ local function selected_row()
 		return nil
 	end
 	return row_at(G.cursor.row)
+end
+
+-- The process under the cursor, or nil where it is on a group or on nothing.
+function tab.current()
+	local row = selected_row()
+	if row == nil or row.group then
+		return nil
+	end
+	return row
+end
+
+function tab.view_mode()
+	return T.view.mode
+end
+
+-- Moves the cursor to a process, where the list has it; the program says where that is.
+function tab.select_key(pid, start)
+	T.selected = { pid = pid, start = start }
+	set({ selected = T.selected })
+end
+
+-- A place by the cursor's row for a menu to open at: under the row, a little in from its left edge.
+function tab.anchor()
+	local box = G.cursor and b.layout.bounds(u:name("procs", "row", G.cursor.row))
+	if box == nil then
+		box = b.layout.bounds("procs")
+	end
+	if box == nil then
+		return { x = 40, y = 80 }
+	end
+	return { x = box.x + 48, y = box.y + box.h }
 end
 
 local function toggle_mark(row)
@@ -551,6 +585,9 @@ local function row_menu(place, at)
 		return true
 	end
 	select_row(row)
+	if not row.group and act.row_menu ~= nil then
+		return act.row_menu(row, at)
+	end
 	local entries = {}
 	if row.children > 0 then
 		local what = row.group and "group" or "branch"
@@ -604,23 +641,17 @@ function tab.action(action)
 		elseif kind == "sort" then
 			sort_by(action.column)
 		elseif kind == "open" then
+			-- Enter and a double click show the process; a group is opened or folded.
 			local row = row_at(action.row)
-			if row ~= nil and row.children > 0 then
+			if row ~= nil and row.group then
 				toggle_fold(row)
+			elseif row ~= nil and act.detail_open ~= nil then
+				act.detail_open(row)
 			end
 		elseif kind == "menu" then
 			return row_menu(action.row, action.at)
 		elseif kind == "need" then
 			fill()
-		end
-		return true
-	elseif from == "row-menu" and kind == "menu" then
-		if action.entry == "fold" then
-			tab.fold()
-		elseif action.entry == "mark" then
-			tab.mark()
-		elseif action.entry == "subtree" then
-			tab.subtree()
 		end
 		return true
 	elseif from == "columns-menu" and kind == "menu" then

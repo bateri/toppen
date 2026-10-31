@@ -76,3 +76,20 @@ pub fn task(pid: u32) -> Option<Task> {
 pub fn task(_pid: u32) -> Option<Task> {
     None
 }
+
+/// How many files, sockets and pipes a process has open: the size the system says a list of them
+/// would take, divided by what one takes.
+#[cfg(target_os = "macos")]
+pub fn open_files(pid: u32) -> Option<usize> {
+    let pid = libc::c_int::try_from(pid).ok()?;
+    // SAFETY: with no buffer the call only says how many bytes the list would take.
+    let bytes =
+        unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0) };
+    let each = libc::c_int::try_from(std::mem::size_of::<libc::proc_fdinfo>()).ok()?;
+    (bytes >= 0 && each > 0).then(|| usize::try_from(bytes / each).unwrap_or(0))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn open_files(_pid: u32) -> Option<usize> {
+    None
+}

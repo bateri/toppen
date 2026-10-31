@@ -41,6 +41,14 @@ local function set_text(text)
 	end)
 end
 
+-- Adds `term` to what the field holds (once), as if it was typed.
+function filter.add(term)
+	if string.find(" " .. F.value .. " ", " " .. term .. " ", 1, true) ~= nil then
+		return
+	end
+	set_text(F.value == "" and term or (F.value .. " " .. term))
+end
+
 -- An action of the bar. Whether it was the bar's, and its reply.
 function filter.action(action)
 	local from, kind = action.from, action.kind

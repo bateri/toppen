@@ -10,6 +10,8 @@ in the pane; any other terminal is given a summary of the machine, as `top -l 1`
 
 ![The overview](docs/overview.png)
 
+![The details of a process](docs/details.png)
+
 ## Use
 
 ```
@@ -31,6 +33,17 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   **m** marks a process.
 - While the pointer is over the table (and for three seconds after a key) the rows keep their places,
   however the numbers change; "Order held" says how many would have moved, and pressing it lets go.
+- **Enter** (or a double click) shows a process in a panel beside the table: what it takes, as graphs
+  of the last minutes, its whole command line, where it works, who started it and what it started
+  (press one to go to it), and its environment (what looks like a secret stays hidden until asked).
+  **i** shows or hides it, **Esc** puts it away.
+- What can be done to the process under the cursor: **k** sends a signal (a menu of TERM, INT, HUP,
+  KILL, STOP, CONT, USR1 and USR2; toppen asks first, showing the whole command line, and offers to
+  send it to what is below it too), **n** changes its priority, **s** opens a shell in its folder,
+  **c** copies its command line, and **.** (or the right button) opens the menu of the row, which
+  has these and more. A process of another user is shown, and left alone unless toppen runs as root.
+  A signal names the process by its id and the second it started in: if it ended meanwhile and its
+  id was used again, nothing is sent.
 - Everything the keys do can be pressed with the mouse.
 
 The program looks at the machine only while its view is open and the updates are not paused.

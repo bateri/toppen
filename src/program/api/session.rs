@@ -43,8 +43,16 @@ struct Sampling {
 }
 
 #[derive(Serialize)]
+struct Person {
+    name: String,
+    root: bool,
+}
+
+#[derive(Serialize)]
 struct Boot {
     version: &'static str,
+    /// Who is looking: the processes this person may signal are theirs, or all as root.
+    person: Person,
     machine: MachineInfo,
     features: Features,
     sampling: Sampling,
@@ -81,6 +89,13 @@ fn boot(session: &Session, _: NoParams) -> Result<Boot, Failure> {
     let machine = session.sampler.machine();
     Ok(Boot {
         version: env!("CARGO_PKG_VERSION"),
+        person: {
+            let person = session.control.person();
+            Person {
+                name: person.name,
+                root: person.root,
+            }
+        },
         machine: info(machine),
         features: Features {
             pressure: machine.features.pressure,

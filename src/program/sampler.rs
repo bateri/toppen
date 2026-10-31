@@ -133,6 +133,16 @@ impl Sampler {
         self.shared.notify();
     }
 
+    /// The sample taken last, if one was.
+    #[must_use]
+    pub fn latest(&self) -> Option<Arc<Sample>> {
+        self.shared
+            .lock()
+            .recent
+            .back()
+            .map(|(_, sample)| Arc::clone(sample))
+    }
+
     /// Wakes the watchers so that they look whether theirs ended.
     pub fn wake(&self) {
         self.shared.notify();

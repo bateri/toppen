@@ -10,6 +10,8 @@ local overview = require("./parts/overview")
 local status = require("./parts/status")
 local tab = require("./parts/table")
 local filter = require("./parts/filter")
+local detail = require("./parts/detail")
+local actions = require("./parts/actions")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 
@@ -22,7 +24,12 @@ local function idle()
 	return u.holder == "page"
 end
 
-local cmds = lib.commands({
+-- A command about a process: the keyboard is not in a field, and there is a process to be about.
+local function on_process()
+	return u.holder == "page" and detail.target() ~= nil
+end
+
+local list = {
 	{ id = "pause", title = "Pause or resume updates", group = "Updates", keys = "space", when = idle },
 	{ id = "filter", title = "Filter processes", group = "Table", keys = "/", when = idle },
 	{ id = "tree", title = "Show the process tree", group = "Table", keys = "t", when = idle },
@@ -35,7 +42,11 @@ local cmds = lib.commands({
 	{ id = "reverse", title = "Reverse the order", group = "Table", keys = "r", when = idle },
 	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = "m", when = idle },
 	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = "o", when = idle },
-})
+}
+for _, entry in actions.commands(on_process) do
+	list[#list + 1] = entry
+end
+local cmds = lib.commands(list)
 
 -- --- The page -----------------------------------------------------------------------------------------------------
 
@@ -70,15 +81,16 @@ local function render(size, now, reduce_motion)
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	root:child(overview.view())
 	root:child(filter.view())
-	root:child(b.div():grow(1):min_h(0):col():child(tab.view(size.w)))
+	root:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(size.w)))))
 	root:child(status.view())
+	actions.view(root)
 	cmds:write(u, root)
 	return u:finish(root)
 end
 
 -- --- What the person does ---------------------------------------------------------------------------------------
 
-local function command(id)
+local function command(id, near)
 	if id == "pause" then
 		act.toggle_pause()
 	elseif id == "filter" then
@@ -103,6 +115,11 @@ local function command(id)
 		tab.mark()
 	elseif id == "subtree" then
 		tab.subtree()
+	else
+		local reply = actions.command(id, near)
+		if reply ~= nil then
+			return reply
+		end
 	end
 	return true
 end
@@ -113,12 +130,23 @@ local function on_action(action)
 		status.action(action)
 		return true
 	end
+	local from, kind = action.from, action.kind
 	local reply = tab.action(action)
 	if reply == nil then
 		reply = filter.action(action)
 	end
-	if reply == nil and action.from == "commands" and action.kind == "command" then
+	if reply == nil then
+		reply = detail.action(action)
+	end
+	if reply == nil then
+		reply = actions.action(action)
+	end
+	if reply == nil and from == "commands" and kind == "command" then
 		reply = command(action.id)
+	elseif reply == nil and (from == "row-menu" or from == "signal-menu") and kind == "menu" then
+		reply = command(action.entry)
+	elseif reply == nil and string.sub(from, 1, 3) == "do-" and kind == "press" then
+		reply = command(string.sub(from, 4), from)
 	end
 	if reply == nil then
 		reply = true
@@ -132,7 +160,10 @@ local function key(event)
 		return nil
 	end
 	local name = event.key
-	if name == "+" or name == "=" then
+	if name == "escape" and detail.state.open then
+		detail.close()
+		return true
+	elseif name == "+" or name == "=" then
 		act.step_interval(-1)
 		return true
 	elseif name == "-" then
@@ -157,7 +188,11 @@ local function handle(event)
 		if kind == "key" then
 			reply = b.merge(reply, key(event))
 		elseif kind == "press" then
-			reply = b.merge(reply, tab.event(event))
+			local pressed = tab.event(event)
+			if pressed == nil then
+				pressed = detail.event(event)
+			end
+			reply = b.merge(reply, pressed)
 		end
 	end
 	return kit.take(reply)

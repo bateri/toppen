@@ -5,6 +5,7 @@
 //!
 //! Debug builds only: a release has no fixture, and `TOPPEN_FIXTURE` means nothing to it.
 
+use super::control::{Control, Detail, Key, Person, Refused, Signal};
 use super::{
     Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Source,
     Volume,
@@ -158,7 +159,125 @@ pub struct Fixture {
     total_tx: u64,
 }
 
+/// What the fixture's control was asked to do, in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Done {
+    Signalled(Key, Signal),
+    Reniced(Key, i32),
+    /// A shell was asked for, in this directory.
+    Shell(Option<String>),
+}
+
+/// The control of the fixture machine: it acts on nothing, keeps what it was asked, and refuses as
+/// a machine would. The person is `lantern`; the processes of the other users are not theirs
+/// (`Denied`), and a name that is none of the fixture's is `Gone`.
+#[derive(Default)]
+pub struct FixtureControl {
+    known: std::collections::HashMap<Key, (String, String, String)>,
+    done: std::sync::Mutex<Vec<Done>>,
+}
+
+impl FixtureControl {
+    /// What it was asked to do so far.
+    #[cfg(test)]
+    #[must_use]
+    pub fn done(&self) -> Vec<Done> {
+        self.done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn own(&self, key: Key) -> Result<(), Refused> {
+        match self.known.get(&key) {
+            None => Err(Refused::Gone),
+            Some((_, user, _)) if user != "lantern" => Err(Refused::Denied),
+            Some(_) => Ok(()),
+        }
+    }
+
+    fn record(&self, done: Done) {
+        self.done
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(done);
+    }
+}
+
+impl Control for FixtureControl {
+    fn person(&self) -> Person {
+        Person {
+            name: "lantern".to_owned(),
+            root: false,
+        }
+    }
+
+    fn detail(&self, key: Key) -> Result<Detail, Refused> {
+        let (name, user, command) = self.known.get(&key).ok_or(Refused::Gone)?;
+        Ok(Detail {
+            argv: command.split_whitespace().map(str::to_owned).collect(),
+            exe: command.split_whitespace().next().map(str::to_owned),
+            cwd: Some(format!("/home/{user}/{name}")),
+            env: if user == "lantern" {
+                vec![
+                    ("HOME".to_owned(), "/home/lantern".to_owned()),
+                    ("LANG".to_owned(), "en_US.UTF-8".to_owned()),
+                    ("API_TOKEN".to_owned(), "tok-8f2a91c4d7".to_owned()),
+                    ("PATH".to_owned(), "/usr/local/bin:/usr/bin:/bin".to_owned()),
+                ]
+            } else {
+                Vec::new()
+            },
+            fds: Some(8 + usize::try_from(key.0 % 23).unwrap_or(0)),
+        })
+    }
+
+    fn signal(&self, key: Key, signal: Signal) -> Result<(), Refused> {
+        self.own(key)?;
+        self.record(Done::Signalled(key, signal));
+        Ok(())
+    }
+
+    fn shell(&self, cwd: Option<&str>) -> Option<std::process::Command> {
+        // No shell is started: the pane a test runs in is not lent to anything.
+        self.record(Done::Shell(cwd.map(str::to_owned)));
+        None
+    }
+
+    fn renice(&self, key: Key, nice: i32) -> Result<(), Refused> {
+        self.own(key)?;
+        // A person may only make a process of their own nicer.
+        if nice < 0 {
+            return Err(Refused::Denied);
+        }
+        self.record(Done::Reniced(key, nice));
+        Ok(())
+    }
+}
+
 impl Fixture {
+    /// The control of this fixture's processes.
+    #[must_use]
+    pub fn control(&self) -> FixtureControl {
+        FixtureControl {
+            known: self
+                .specs
+                .iter()
+                .map(|spec| {
+                    (
+                        (spec.pid, spec.start),
+                        (
+                            spec.name.clone(),
+                            spec.user.to_owned(),
+                            spec.command.clone(),
+                        ),
+                    )
+                })
+                .collect(),
+            done: std::sync::Mutex::default(),
+        }
+    }
+
     /// The fixture called `name` ("small", "large"), if there is one.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {

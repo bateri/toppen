@@ -31,10 +31,11 @@ mod text;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use pencere::{EndedBy, NoViewReason, Options, Outcome};
+use pencere::{EndedBy, NoViewReason, Options, Outcome, ViewControl};
 
 use command_line::Asked;
 use sample::Source;
+use sample::control::{Control, SystemControl};
 use sample::system::System;
 use sampler::Sampler;
 use session::Session;
@@ -46,20 +47,26 @@ const NO_VIEWS: &str = "This terminal shows no views. toppen opens as a monitor 
 /// Where the measurements come from: the machine the program runs on, or, in a debug build, the
 /// fixture machine that `TOPPEN_FIXTURE=<name>` names (`small`, `large`), which is what the tests and
 /// the pictures of `docs/` look at.
-fn source() -> Result<Box<dyn Source>, String> {
+/// What looks at the machine and what acts on its processes.
+type Machine = (Box<dyn Source>, Arc<dyn Control>);
+
+fn source() -> Result<Machine, String> {
     #[cfg(debug_assertions)]
     if let Some(name) = std::env::var_os("TOPPEN_FIXTURE") {
         let name = name.to_string_lossy();
         return sample::fixture::Fixture::named(&name)
-            .map(|fixture| Box::new(fixture) as Box<dyn Source>)
+            .map(|fixture| {
+                let control = Arc::new(fixture.control()) as Arc<dyn Control>;
+                (Box::new(fixture) as Box<dyn Source>, control)
+            })
             .ok_or_else(|| format!("toppen: there is no fixture called {name:?} (small, large)"));
     }
-    Ok(Box::new(System::new()))
+    Ok((Box::new(System::new()), Arc::new(SystemControl)))
 }
 
 /// The summary of the machine now: text, or JSON, with `note` under the text.
 fn summary(json: bool, note: Option<&str>) -> Result<String, String> {
-    let mut source = source()?;
+    let (mut source, _) = source()?;
     // The first look primes the rates; the second is the one that says something.
     let machine = source.machine();
     let _ = source.sample();
@@ -126,16 +133,21 @@ fn main() -> ExitCode {
             }
         };
     }
-    let source = match source() {
-        Ok(source) => source,
+    let (source, control) = match source() {
+        Ok(found) => found,
         Err(words) => {
             eprintln!("{words}");
             return ExitCode::from(2);
         }
     };
-    let session = Arc::new(Session::new(Sampler::start(source, line.interval)));
+    let view = ViewControl::new();
+    let session = Arc::new(Session::new(
+        Sampler::start(source, line.interval),
+        control,
+        view.clone(),
+    ));
     let fallen_back = Arc::new(Mutex::new(None));
-    let outcome = pencere::serve(options(&session, &fallen_back));
+    let outcome = pencere::serve(options(&session, &fallen_back).control(view));
     let status = match outcome {
         Ok(Outcome::Closed(closed)) if closed.by == EndedBy::Error => 1,
         Ok(outcome) => fallen_back

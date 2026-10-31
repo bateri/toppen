@@ -115,6 +115,37 @@ fn the_view_call_sets_the_table_and_refuses_what_it_does_not_take() {
 }
 
 #[test]
+fn what_is_asked_of_a_process_that_is_not_there_is_gone_and_nothing_is_sent() {
+    // A pid no machine has: the calls are about the answer, never about a process of the person's.
+    let nobody = json!({ "pid": 2_000_000_000, "start": 1 });
+    let with = |extra: serde_json::Value| {
+        let mut params = nobody.clone();
+        for (key, value) in extra.as_object().unwrap() {
+            params[key] = value.clone();
+        }
+        params
+    };
+    let pane = Pane::new();
+    let heard = pane.ask(
+        &Script::new()
+            .call("detail", nobody.clone())
+            .call("signal", with(json!({ "signal": "TERM" })))
+            .call("signal", with(json!({ "signal": "KILL", "tree": true })))
+            .call("signal", with(json!({ "signal": "SEGV" })))
+            .call("renice", with(json!({ "nice": 5 })))
+            .call("renice", with(json!({ "nice": 40 })))
+            .call("detail", json!({ "pid": 1 })),
+    );
+    assert!(heard[0].failed("gone"), "{:?}", heard[0]);
+    assert_eq!(heard[1].result()["outcome"], "gone");
+    assert_eq!(heard[2].result()["outcome"], "gone");
+    assert!(heard[3].failed("bad-params"), "{:?}", heard[3]);
+    assert_eq!(heard[4].result()["outcome"], "gone");
+    assert!(heard[5].failed("bad-params"), "{:?}", heard[5]);
+    assert!(heard[6].failed("bad-params"), "{:?}", heard[6]);
+}
+
+#[test]
 fn the_processes_topic_pushes_the_window_and_the_counts() {
     let pane = Pane::new();
     let log = pane.record(

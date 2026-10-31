@@ -13,7 +13,7 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
-use crate::page_tests::{PANE, Page, open, session_over};
+use crate::page_tests::{PANE, Page, on_my_processes, open, session_over};
 use crate::sample::fixture::Fixture;
 
 /// A page as large as a terminal pane on a laptop.
@@ -65,5 +65,21 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
 
     let page = page_of(Fixture::small(), PANE, &fonts)?;
     save(&page, &fonts, Palette::Dark, "overview-80x24.png");
+
+    // The details of a process of the person, and the question before a signal is sent.
+    let session = session_over(Fixture::small(), Duration::from_secs(1));
+    let mut page = open(&session, BIG, Some(&fonts))?;
+    on_my_processes(&session, &mut page);
+    page.command("detail")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Working folder"))?;
+    // The graphs are what the topic told since the panel opened: let it tell a while.
+    std::thread::sleep(Duration::from_secs(9));
+    page.advance(1.0)?;
+    save(&page, &fonts, Palette::Dark, "details.png");
+    page.command("signal_kill")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Cancel"))?;
+    // The dialog fades in.
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "signal.png");
     Ok(())
 }

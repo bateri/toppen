@@ -3,14 +3,16 @@
 The page (`src/view/`) and the program (`src/program/`) talk only through what is written here:
 calls the page makes, and topics it listens to. A change to one starts in this file. The code that
 answers is `src/program/api/`; the page's own side is `src/view/parts/` (`overview.lua`, `table.lua`,
-`filter.lua`, `status.lua`).
+`filter.lua`, `status.lua`, `detail.lua`, `actions.lua`).
 
 **Units.** Bytes are bytes (1024 to the step when a person reads them), a share is a number from 0 to
 100, time is seconds, a rate is bytes a second, a frequency is MHz. Members are `camelCase`.
 
 **Errors.** A call that cannot be done answers with an error: `bad-params` (the params are not what
 the call takes: a member it does not know, a value out of range; the words say which), `not-found`
-(no such call), `internal` (the program failed). The words of an error are for the person.
+(no such call), `internal` (the program failed), `gone` (the process asked about has ended, or is not
+the one that was named: its start does not hold), `unavailable` (the thing asked for cannot be done
+here, as the shell in a terminal that cannot lend its pane). The words of an error are for the person.
 
 ## Calls
 
@@ -21,6 +23,7 @@ What the page needs before it draws, once. Params: none.
 ```json
 {
   "version": "0.1.0",
+  "person": { "name": "lantern", "root": false },
   "machine": {
     "host": "lantern", "os": "macOS 26.4.1", "kernel": "25.4.0", "arch": "arm64",
     "cpu": "Apple M1 Pro", "threads": 10, "cores": 10,
@@ -30,6 +33,9 @@ What the page needs before it draws, once. Params: none.
   "sampling": { "interval": 1.0, "paused": false, "min": 0.5, "max": 10.0 }
 }
 ```
+
+`person` is who is looking: the processes of that `name` (all of them, as `root`) are the ones the
+page lets be signalled and reniced; the system has the last word (`denied`).
 
 `features` says what this machine can measure: a card whose reading is not there is drawn without
 it, not with a zero.
@@ -79,6 +85,55 @@ Answers the view as it now is. The topic `processes` tells the rows again, in th
 
 A process is named by its `pid` and `start` (seconds since the epoch): a pid is used again after its
 process ends.
+
+### `detail`
+
+What a measurement does not say of one process. Params: `pid` and `start`, both required. Answers:
+
+```json
+{ "pid": 4120, "start": 1761865000, "ppid": 412, "name": "Google Chrome", "user": "lantern",
+  "state": "S", "nice": 0, "threads": 41, "cpu": 12.5, "mem": 838860800, "virt": 4398046511104,
+  "time": 1032.4, "read": 0, "write": 4096,
+  "argv": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--type=renderer"],
+  "exe": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "cwd": "/",
+  "env": [{ "name": "API_TOKEN", "value": "tok-8f2a", "secret": true }],
+  "fds": 112,
+  "parents": [{ "pid": 412, "start": 1761860000, "name": "Google Chrome", "cpu": 3.1 }],
+  "children": [{ "pid": 4188, "start": 1761865100, "name": "helper", "cpu": 0.2 }],
+  "childrenTotal": 1, "may": true }
+```
+
+- `argv` is the command line a word each; `exe`, `cwd`, `env` and `fds` (open files) are what the
+  system tells the person to see (`null`, or an empty `env`, where it says nothing). `secret` is true
+  of a variable whose name has `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `KEY`, `CREDENTIAL`, `AUTH` or
+  `COOKIE` in it; the page hides its value until asked.
+- `parents` go from the nearest to the oldest (at most 24); `children` are the busiest 40 of those
+  below, `childrenTotal` all of them.
+- `may` is whether the person may signal and renice it (it is theirs, or they are root).
+- A process that is not in the last sample, or whose `start` does not hold, is `gone`.
+
+### `signal`
+
+Sends a signal to a process, once. Params: `pid`, `start` and `signal` (one of `TERM INT HUP KILL
+STOP CONT USR1 USR2`) are required; `tree` (boolean) sends it to what is below the process too,
+the deepest first. The program reads the process's start again right before it sends; if it does not
+hold the process is `gone` and nothing is sent. Answers
+`{ "outcome", "message", "done", "gone", "denied", "failed" }`: `outcome` is how it came out for the
+process named (`done`, `gone`, `denied` where the system refuses, `failed` with the system's words
+in `message`); the counts are over the whole tree.
+
+### `renice`
+
+Sets a process's nice value. Params: `pid`, `start` and `nice` (a whole number from -20 to 19). Checked
+and answered as `signal` is: `{ "outcome", "message", "done", "gone", "denied", "failed" }`. Lowering
+the value below what it is takes root: `denied`.
+
+### `shell`
+
+Lends the pane to the person's shell (`$SHELL`) in a directory; the shell has the terminal until it
+ends, and the view is shown again, afresh, after. Params: `cwd` (optional; a directory that is none,
+or none given, is home). Answers `{ "ok": true }` before the view goes, and that answer is lost
+with the view. Where the terminal cannot lend its pane the call is `unavailable`.
 
 ## Topics
 
@@ -165,3 +220,16 @@ state is `view`'s, and each message carries it.
 - `hits` (only there when the filter marked something) are ranges of characters `[from, to)` of
   `name` and of `command`.
 - A command line is cut at 400 characters; a message is held to 700 KiB by telling fewer rows.
+
+### `process`
+
+The live values of one process, with each sample. Params: `pid` and `start`. The first message comes
+with the subscription.
+
+```json
+{ "kind": "process", "at": 1761868920.5, "gone": false, "cpu": 12.5, "mem": 838860800,
+  "threads": 41, "state": "S", "nice": 0, "time": 1032.4, "read": 0, "write": 4096 }
+```
+
+When the process is not in the sample (it ended) `gone` is `true` and nothing else is there. The
+page keeps the history it draws from these messages; the program keeps none.

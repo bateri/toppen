@@ -7,6 +7,7 @@
 
 mod overview;
 mod params;
+mod process;
 mod processes;
 mod session;
 
@@ -24,12 +25,18 @@ use crate::session::Session;
 enum Failure {
     /// The params are not what the call takes.
     BadParams(String),
+    /// The process is not there (any more, or not the one that was named).
+    Gone(String),
+    /// What the call needs is not there: the terminal does not lend its pane.
+    Unavailable(String),
 }
 
 impl From<Failure> for ViewError {
     fn from(failure: Failure) -> Self {
         match failure {
             Failure::BadParams(words) => Self::with_message("bad-params", words),
+            Failure::Gone(words) => Self::with_message("gone", words),
+            Failure::Unavailable(words) => Self::with_message("unavailable", words),
         }
     }
 }
@@ -57,6 +64,8 @@ fn call<P: DeserializeOwned + 'static, T: Serialize + 'static>(
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
     let options = processes::calls(options, session);
+    let options = process::calls(options, session);
     let options = overview::topic(options, session);
-    processes::topic(options, session)
+    let options = processes::topic(options, session);
+    process::topic(options, session)
 }

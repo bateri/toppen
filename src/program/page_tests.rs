@@ -15,7 +15,8 @@ use pencere_drive::headless::{Error, Headless, InProcess};
 use pencere_view::Paint;
 
 use crate::options;
-use crate::sample::fixture::Fixture;
+use crate::sample::control::Control;
+use crate::sample::fixture::{Fixture, FixtureControl};
 use crate::sampler::Sampler;
 use crate::session::Session;
 
@@ -58,7 +59,21 @@ const GENEROUS_CALL: Duration = Duration::from_secs(10);
 
 /// A session over `fixture`, looked at every `interval`.
 pub(crate) fn session_over(fixture: Fixture, interval: Duration) -> Arc<Session> {
-    Arc::new(Session::new(Sampler::start(Box::new(fixture), interval)))
+    session_with_control(fixture, interval).0
+}
+
+/// A session over `fixture`, and the control that records what the page asked it to do.
+pub(crate) fn session_with_control(
+    fixture: Fixture,
+    interval: Duration,
+) -> (Arc<Session>, Arc<FixtureControl>) {
+    let control = Arc::new(fixture.control());
+    let session = Arc::new(Session::new(
+        Sampler::start(Box::new(fixture), interval),
+        Arc::clone(&control) as Arc<dyn Control>,
+        pencere::ViewControl::new(),
+    ));
+    (session, control)
 }
 
 /// The page of this checkout's src/view/ (and its pictures, src/assets/), on the handlers of
@@ -423,4 +438,215 @@ fn a_big_machines_table_asks_for_the_rows_in_view_and_no_more() {
             .any(|word| word.contains("MiB"))
     })
     .expect("the rows far down are told");
+}
+
+// --- One process: its details and what is done to it ----------------------------------------------
+
+use crate::sample::control::Signal;
+use crate::sample::fixture::Done;
+
+/// Narrows the table to the processes of the person and puts the cursor on the first of them, with
+/// the keyboard in the table.
+pub(crate) fn on_my_processes(session: &Arc<Session>, page: &mut Page) {
+    page.command("filter").expect("the filter is asked for");
+    page.type_text("user:lantern").expect("the filter is typed");
+    page.wait_for(WITHIN, |_| session.table().view().filter == "user:lantern")
+        .expect("the program has the filter");
+    page.press("enter").expect("the field is left");
+    page.advance(0.4).expect("the table settles");
+}
+
+/// Waits until `words` is said in one piece among the words of the page.
+fn wait_for_said(page: &mut Page, words: &str) {
+    page.wait_for(WITHIN, |page| said(page).contains(words))
+        .unwrap_or_else(|_| panic!("the page says {words:?}: {}", short(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_process_shows_its_details_beside_the_table_and_its_secrets_stay_hidden_until_asked() {
+    let (session, mut page) = open_small(WIDE);
+    on_my_processes(&session, &mut page);
+    page.command("detail").expect("the details are asked for");
+    page.wait_for(WITHIN, |page| page.says("Working folder"))
+        .expect("the panel is drawn");
+    for part in ["Environment", "Started by", "API_TOKEN", "HOME"] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    // A variable that looks like a secret has its value hidden.
+    assert!(!said(&page).contains("tok-8f2a91c4d7"));
+    assert!(page.says("••••••••"));
+    // The environment is at the foot of the panel, which scrolls.
+    page.scroll_to("detail/body", 4000.0)
+        .expect("the panel is scrolled");
+    page.click("env-reveal").expect("the values are asked for");
+    wait_for_said(&mut page, "tok-8f2a91c4d7");
+    page.click("env-reveal").expect("the values are hidden");
+    page.wait_for(WITHIN, |page| !said(page).contains("tok-8f2a91c4d7"))
+        .expect("the secret is hidden again");
+    page.click("detail-close").expect("the panel is closed");
+    page.wait_for(WITHIN, |page| !page.says("Working folder"))
+        .expect("the panel is gone");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_narrow_pane_has_the_details_over_the_table_and_escape_puts_them_away() {
+    let (session, mut page) = open_small(PANE);
+    on_my_processes(&session, &mut page);
+    page.command("detail").expect("the details are asked for");
+    page.wait_for(WITHIN, |page| page.says("Working folder"))
+        .expect("the drawer is drawn");
+    page.press("escape").expect("escape is pressed");
+    page.wait_for(WITHIN, |page| !page.says("Working folder"))
+        .expect("the drawer is gone");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_signal_is_asked_for_with_the_command_and_sent_only_when_answered() {
+    let (session, control) = session_with_control(Fixture::small(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    on_my_processes(&session, &mut page);
+    // The menu of signals is a key away; the signal itself is a command.
+    page.command("signal_kill").expect("a kill is asked for");
+    page.wait_for(WITHIN, |page| page.says("Cancel"))
+        .expect("the person is asked");
+    let said_now = said(&page);
+    assert!(said_now.contains("/usr/local/bin/"), "{said_now}");
+    assert!(said_now.contains("Kill"), "{said_now}");
+    assert!(control.done().is_empty());
+    page.click("confirm/action/cancel")
+        .expect("the person gives up");
+    page.wait_for(WITHIN, |page| !page.says("Cancel"))
+        .expect("the question is gone");
+    page.advance(0.2).expect("the page settles");
+    assert!(control.done().is_empty(), "{:?}", control.done());
+    // Answered, it goes to the process, and the toast says so.
+    page.command("signal_term").expect("an end is asked for");
+    page.wait_for(WITHIN, |page| page.says("Cancel"))
+        .expect("the person is asked");
+    page.click("confirm/action/send")
+        .expect("the person agrees");
+    page.wait_for(WITHIN, |_| !control.done().is_empty())
+        .expect("the signal is sent");
+    assert!(matches!(
+        control.done().as_slice(),
+        [Done::Signalled(_, Signal::Term)]
+    ));
+    wait_for_said(&mut page, "Sent TERM to");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn what_belongs_to_another_user_is_not_signalled_and_the_page_says_why() {
+    let (session, control) = session_with_control(Fixture::small(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    page.command("filter").expect("the filter is asked for");
+    page.type_text("user:root").expect("the filter is typed");
+    page.wait_for(WITHIN, |_| session.table().view().filter == "user:root")
+        .expect("the program has the filter");
+    page.press("enter").expect("the field is left");
+    page.advance(0.4).expect("the table settles");
+    page.command("detail").expect("the details are asked for");
+    page.wait_for(WITHIN, |page| page.says("Working folder"))
+        .expect("the panel is drawn");
+    page.command("signal_kill").expect("a kill is asked for");
+    wait_for_said(&mut page, "takes root");
+    assert!(!page.says("Cancel"));
+    assert!(control.done().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_priority_is_typed_checked_and_set_and_a_shell_is_asked_for_in_the_working_folder() {
+    let (session, control) = session_with_control(Fixture::small(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    on_my_processes(&session, &mut page);
+    page.command("renice").expect("a priority is asked for");
+    wait_for_said(&mut page, "Priority of");
+    page.type_text("99").expect("a number is typed");
+    page.press("enter").expect("the person agrees");
+    wait_for_said(&mut page, "A priority is a whole number from -20 to 19.");
+    assert!(control.done().is_empty());
+    // The dialog stays open on a number that is none; a good one is set.
+    page.fill("renice/input/field", "7")
+        .expect("a good number is typed");
+    page.press("enter").expect("the person agrees");
+    page.wait_for(WITHIN, |_| {
+        control
+            .done()
+            .iter()
+            .any(|done| matches!(done, Done::Reniced(_, 7)))
+    })
+    .expect("the priority is set");
+    page.advance(0.2).expect("the page settles");
+    page.command("shell").expect("a shell is asked for");
+    page.wait_for(WITHIN, |_| {
+        control
+            .done()
+            .iter()
+            .any(|done| matches!(done, Done::Shell(Some(cwd)) if cwd.starts_with("/home/lantern/")))
+    })
+    .expect("the shell is asked for where the process works");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_click_on_a_parent_in_the_panel_shows_that_process() {
+    let (session, mut page) = open_small(WIDE);
+    // A process of the person whose parent is neither init nor the same name.
+    let sample = session.sampler.latest().expect("a sample");
+    let child = sample
+        .processes
+        .iter()
+        .find(|process| {
+            process.user == "lantern"
+                && process.ppid != 1
+                && sample
+                    .processes
+                    .iter()
+                    .any(|up| up.pid == process.ppid && up.name != process.name)
+        })
+        .expect("a process with a parent of another name");
+    let parent = sample
+        .processes
+        .iter()
+        .find(|up| up.pid == child.ppid)
+        .expect("its parent");
+    page.command("filter").expect("the filter is asked for");
+    page.type_text(&format!("pid:{}", child.pid))
+        .expect("the filter is typed");
+    page.wait_for(WITHIN, |_| {
+        session.table().view().filter.starts_with("pid:")
+    })
+    .expect("the program has the filter");
+    page.press("enter").expect("the field is left");
+    page.advance(0.4).expect("the table settles");
+    page.command("detail").expect("the details are asked for");
+    wait_for_said(&mut page, &format!("pid {} · lantern", child.pid));
+    page.click(&format!("detail-go/{}/{}/up", parent.pid, parent.start))
+        .expect("the parent is pressed");
+    wait_for_said(&mut page, &format!("pid {} · {}", parent.pid, parent.user));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_menu_of_a_row_does_what_the_keys_do() {
+    let (session, mut page) = open_small(WIDE);
+    on_my_processes(&session, &mut page);
+    page.right_click("procs/row/1")
+        .expect("the row is pressed with the right button");
+    page.pick_titled("Copy the process id")
+        .expect("the entry is chosen");
+    wait_for_said(&mut page, "Copied the process id.");
+    page.right_click("procs/row/1")
+        .expect("the row is pressed with the right button");
+    page.pick_titled("Kill it (KILL)")
+        .expect("the entry is chosen");
+    wait_for_said(&mut page, "Kill ");
+    assert!(page.says("Cancel"));
+    page.press("escape").expect("the person gives up");
+    page.wait_for(WITHIN, |page| !page.says("Cancel"))
+        .expect("the question is gone");
 }

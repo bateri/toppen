@@ -5,6 +5,7 @@
 //!
 //! This is `sample/`: it knows nothing of the page. It takes and gives plain Rust values.
 
+pub mod control;
 pub mod history;
 pub mod linux;
 pub mod macos;
