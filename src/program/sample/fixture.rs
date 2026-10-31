@@ -6,6 +6,7 @@
 //! Debug builds only: a release has no fixture, and `TOPPEN_FIXTURE` means nothing to it.
 
 use super::control::{Control, Detail, Key, Person, Refused, Signal};
+use super::ports::{Listener, PortSource, Ports, Proto};
 use super::{
     Breakdown, Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample,
     Sensor, Source, Volume,
@@ -161,6 +162,15 @@ pub struct Fixture {
     detail: bool,
 }
 
+/// The listening sockets of the fixture, which do not change.
+struct FixturePorts(Vec<Listener>);
+
+impl PortSource for FixturePorts {
+    fn scan(&self) -> Vec<Listener> {
+        self.0.clone()
+    }
+}
+
 /// What the fixture's control was asked to do, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Done {
@@ -258,6 +268,36 @@ impl Control for FixtureControl {
 }
 
 impl Fixture {
+    /// The listening sockets of the fixture machine: each server process on the port its command
+    /// line says, a few over UDP, and one nobody this person can see owns.
+    #[must_use]
+    pub fn ports(&self) -> Ports {
+        let mut listeners = Vec::new();
+        for (index, spec) in self.specs.iter().enumerate().skip(1) {
+            listeners.push(Listener {
+                proto: Proto::Tcp,
+                addr: if index % 3 == 0 { "*" } else { "127.0.0.1" }.to_owned(),
+                port: 3000 + u16::try_from(index).unwrap_or(0),
+                pid: Some(spec.pid),
+            });
+            if index % 7 == 0 {
+                listeners.push(Listener {
+                    proto: Proto::Udp,
+                    addr: "*".to_owned(),
+                    port: 5000 + u16::try_from(index).unwrap_or(0),
+                    pid: Some(spec.pid),
+                });
+            }
+        }
+        listeners.push(Listener {
+            proto: Proto::Tcp,
+            addr: "127.0.0.1".to_owned(),
+            port: 631,
+            pid: None,
+        });
+        Ports::new(Box::new(FixturePorts(listeners)))
+    }
+
     /// The control of this fixture's processes.
     #[must_use]
     pub fn control(&self) -> FixtureControl {

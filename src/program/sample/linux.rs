@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
+use super::ports::{Listener, show_v4, show_v6};
 use super::{Breakdown, Device};
 
 /// A sector in `/proc/diskstats` is 512 bytes whatever the device's own.
@@ -175,6 +176,116 @@ pub fn read_meminfo() -> Option<Breakdown> {
     None
 }
 
+/// A socket of `/proc/net/{tcp,tcp6,udp,udp6}` that listens: where it is bound, and the inode that
+/// ties it to the process that holds it. TCP is listening in state `0A`; a UDP socket that is bound
+/// and not connected is `07`.
+#[must_use]
+pub fn parse_net(text: &str, v6: bool, udp: bool) -> Vec<(String, u16, u64)> {
+    let waiting = if udp { "07" } else { "0A" };
+    text.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.get(3) != Some(&waiting) {
+                return None;
+            }
+            let (address, port) = fields.get(1)?.split_once(':')?;
+            let port = u16::from_str_radix(port, 16).ok()?;
+            if port == 0 {
+                return None;
+            }
+            let address = if v6 {
+                let mut bytes = [0_u8; 16];
+                if address.len() != 32 {
+                    return None;
+                }
+                for (at, chunk) in bytes.chunks_mut(4).enumerate() {
+                    let word = u32::from_str_radix(address.get(at * 8..at * 8 + 8)?, 16).ok()?;
+                    chunk.copy_from_slice(&word.to_le_bytes());
+                }
+                show_v6(std::net::Ipv6Addr::from(bytes))
+            } else {
+                let word = u32::from_str_radix(address, 16).ok()?;
+                show_v4(std::net::Ipv4Addr::from(word.to_le_bytes()))
+            };
+            let inode = fields.get(9)?.parse().ok()?;
+            Some((address, port, inode))
+        })
+        .collect()
+}
+
+/// The inodes of the sockets each process holds, as far as this person may look.
+#[cfg(target_os = "linux")]
+fn socket_owners() -> HashMap<u64, u32> {
+    let mut owners = HashMap::new();
+    let Ok(list) = std::fs::read_dir("/proc") else {
+        return owners;
+    };
+    for entry in list.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Ok(files) = std::fs::read_dir(entry.path().join("fd")) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let Ok(target) = std::fs::read_link(file.path()) else {
+                continue;
+            };
+            let target = target.to_string_lossy();
+            if let Some(inode) = target
+                .strip_prefix("socket:[")
+                .and_then(|rest| rest.strip_suffix(']'))
+                .and_then(|number| number.parse().ok())
+            {
+                owners.insert(inode, pid);
+            }
+        }
+    }
+    owners
+}
+
+/// The listening sockets of this Linux machine.
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn scan_ports() -> Vec<Listener> {
+    let owners = socket_owners();
+    let mut found = Vec::new();
+    for (path, v6, udp) in [
+        ("/proc/net/tcp", false, false),
+        ("/proc/net/tcp6", true, false),
+        ("/proc/net/udp", false, true),
+        ("/proc/net/udp6", true, true),
+    ] {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        for (addr, port, inode) in parse_net(&text, v6, udp) {
+            found.push(Listener {
+                proto: if udp {
+                    super::ports::Proto::Udp
+                } else {
+                    super::ports::Proto::Tcp
+                },
+                addr,
+                port,
+                pid: owners.get(&inode).copied(),
+            });
+        }
+    }
+    found
+}
+
+#[cfg(not(target_os = "linux"))]
+#[must_use]
+pub fn scan_ports() -> Vec<Listener> {
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +388,27 @@ mod meminfo_tests {
             16_000_000 * 1024
         );
         assert!(parse_meminfo("nothing here").is_none());
+    }
+}
+
+#[cfg(test)]
+mod net_tests {
+    use super::*;
+
+    #[test]
+    fn a_listening_socket_is_its_address_its_port_and_the_inode_that_names_its_owner() {
+        let tcp = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000000000000000 100 0 0 10 0\n   1: 00000000:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 222 1 0\n   2: 0100007F:D8F2 0100007F:1F90 01 00000000:00000000 00:00000000 00000000  1000        0 999 1 0\n";
+        assert_eq!(
+            parse_net(tcp, false, false),
+            [
+                ("127.0.0.1".to_owned(), 8080, 12345),
+                ("*".to_owned(), 22, 222)
+            ]
+        );
+        let tcp6 = "  sl  local_address rem_address   st\n   0: 00000000000000000000000001000000:0050 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 77 1 0\n";
+        assert_eq!(parse_net(tcp6, true, false), [("::1".to_owned(), 80, 77)]);
+        let udp = "  sl  local_address rem_address   st\n   0: 00000000:14E9 00000000:0000 07 00000000:00000000 00:00000000 00000000   100        0 55 2 0\n   1: 0100007F:0035 0100007F:9999 01 00000000:00000000 00:00000000 00000000   100        0 56 2 0\n";
+        assert_eq!(parse_net(udp, false, true), [("*".to_owned(), 5353, 55)]);
+        assert!(parse_net("only a header\n", false, false).is_empty());
     }
 }

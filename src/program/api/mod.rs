@@ -7,6 +7,7 @@
 
 mod overview;
 mod params;
+mod ports;
 mod process;
 mod processes;
 mod session;
@@ -67,5 +68,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = process::calls(options, session);
     let options = overview::topic(options, session);
     let options = processes::topic(options, session);
+    let options = ports::topic(options, session);
     process::topic(options, session)
 }

@@ -130,6 +130,15 @@ struct DetailMessage<'a> {
     children_total: usize,
     /// The person may signal and renice it.
     may: bool,
+    /// The sockets it listens on.
+    ports: Vec<PortMessage>,
+}
+
+#[derive(Serialize)]
+struct PortMessage {
+    port: u16,
+    proto: &'static str,
+    addr: String,
 }
 
 fn link(process: &Process) -> Link<'_> {
@@ -221,6 +230,17 @@ fn detail(session: &Session, target: Target) -> Result<serde_json::Value, Failur
         children,
         children_total,
         may: session.control.may(&process.user),
+        ports: session
+            .ports
+            .listeners()
+            .iter()
+            .filter(|listener| listener.pid == Some(process.pid))
+            .map(|listener| PortMessage {
+                port: listener.port,
+                proto: listener.proto.word(),
+                addr: listener.addr.clone(),
+            })
+            .collect(),
     };
     serde_json::to_value(&message).map_err(|why| Failure::BadParams(why.to_string()))
 }

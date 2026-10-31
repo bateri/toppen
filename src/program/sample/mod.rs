@@ -9,6 +9,7 @@ pub mod control;
 pub mod history;
 pub mod linux;
 pub mod macos;
+pub mod ports;
 pub mod system;
 
 #[cfg(debug_assertions)]

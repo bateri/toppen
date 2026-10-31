@@ -36,6 +36,7 @@ use pencere::{EndedBy, NoViewReason, Options, Outcome, ViewControl};
 use command_line::Asked;
 use sample::Source;
 use sample::control::{Control, SystemControl};
+use sample::ports::{Ports, SystemPorts};
 use sample::system::System;
 use sampler::Sampler;
 use session::Session;
@@ -44,29 +45,34 @@ use text::summary::Summary;
 /// The words under the summary of a terminal that shows no views.
 const NO_VIEWS: &str = "This terminal shows no views. toppen opens as a monitor in a terminal that hosts\npencere (bateri); run it there, or over ssh from one.";
 
+/// What looks at the machine, what acts on its processes, and what lists its listening sockets.
+type Parts = (Box<dyn Source>, Arc<dyn Control>, Arc<Ports>);
+
 /// Where the measurements come from: the machine the program runs on, or, in a debug build, the
 /// fixture machine that `TOPPEN_FIXTURE=<name>` names (`small`, `large`), which is what the tests and
 /// the pictures of `docs/` look at.
-/// What looks at the machine and what acts on its processes.
-type Machine = (Box<dyn Source>, Arc<dyn Control>);
-
-fn source() -> Result<Machine, String> {
+fn source() -> Result<Parts, String> {
     #[cfg(debug_assertions)]
     if let Some(name) = std::env::var_os("TOPPEN_FIXTURE") {
         let name = name.to_string_lossy();
         return sample::fixture::Fixture::named(&name)
             .map(|fixture| {
                 let control = Arc::new(fixture.control()) as Arc<dyn Control>;
-                (Box::new(fixture) as Box<dyn Source>, control)
+                let ports = Arc::new(fixture.ports());
+                (Box::new(fixture) as Box<dyn Source>, control, ports)
             })
             .ok_or_else(|| format!("toppen: there is no fixture called {name:?} (small, large)"));
     }
-    Ok((Box::new(System::new()), Arc::new(SystemControl)))
+    Ok((
+        Box::new(System::new()),
+        Arc::new(SystemControl),
+        Arc::new(Ports::new(Box::new(SystemPorts))),
+    ))
 }
 
 /// The summary of the machine now: text, or JSON, with `note` under the text.
 fn summary(json: bool, note: Option<&str>) -> Result<String, String> {
-    let (mut source, _) = source()?;
+    let (mut source, _, _) = source()?;
     // The first look primes the rates; the second is the one that says something.
     let machine = source.machine();
     let _ = source.sample();
@@ -133,7 +139,7 @@ fn main() -> ExitCode {
             }
         };
     }
-    let (source, control) = match source() {
+    let (source, control, ports) = match source() {
         Ok(found) => found,
         Err(words) => {
             eprintln!("{words}");
@@ -144,6 +150,7 @@ fn main() -> ExitCode {
     let session = Arc::new(Session::new(
         Sampler::start(source, line.interval),
         control,
+        ports,
         view.clone(),
     ));
     let fallen_back = Arc::new(Mutex::new(None));

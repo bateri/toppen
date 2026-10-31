@@ -106,7 +106,8 @@ What a measurement does not say of one process. Params: `pid` and `start`, both 
   "fds": 112,
   "parents": [{ "pid": 412, "start": 1761860000, "name": "Google Chrome", "cpu": 3.1 }],
   "children": [{ "pid": 4188, "start": 1761865100, "name": "helper", "cpu": 0.2 }],
-  "childrenTotal": 1, "may": true }
+  "childrenTotal": 1, "may": true,
+  "ports": [{ "port": 3000, "proto": "tcp", "addr": "127.0.0.1" }] }
 ```
 
 - `argv` is the command line a word each; `exe`, `cwd`, `env` and `fds` (open files) are what the
@@ -116,6 +117,7 @@ What a measurement does not say of one process. Params: `pid` and `start`, both 
 - `parents` go from the nearest to the oldest (at most 24); `children` are the busiest 40 of those
   below, `childrenTotal` all of them.
 - `may` is whether the person may signal and renice it (it is theirs, or they are root).
+- `ports` are the sockets it listens on (see the topic `ports`).
 - A process that is not in the last sample, or whose `start` does not hold, is `gone`.
 
 ### `signal`
@@ -246,3 +248,27 @@ with the subscription.
 
 When the process is not in the sample (it ended) `gone` is `true` and nothing else is there. The
 page keeps the history it draws from these messages; the program keeps none.
+
+### `ports`
+
+The sockets that listen, with the process that holds each. Params, all optional: `filter` (words
+that must all hold, whatever the case: part of the port, protocol, address, process, user or pid;
+`:80` is exactly the port 80; at most 200 characters), `sort` (`port`, `address`, `pid`, `process`,
+`user`; `port` by default) and `descending`. To change any, subscribe again. The program scans only
+while a subscription is open, and not more often than every two seconds; a message is told when
+what it says changes.
+
+```json
+{ "kind": "ports", "total": 31, "matched": 2,
+  "rows": [{ "port": 3000, "proto": "tcp", "addr": "127.0.0.1", "pid": 4120, "start": 1761865000,
+             "name": "node", "user": "lantern", "command": "node server.js" }] }
+```
+
+- `proto` is `tcp` (a socket that waits for connections) or `udp` (one that is bound to a port);
+  `addr` is `*` for every address.
+- `pid`, `start`, `name`, `user` and `command` are `null` where the system does not let the person
+  see who holds the socket: on Linux the sockets of processes they may not look into, on macOS those
+  of processes of other users (run as root to see them).
+- At most 500 rows are told; `matched` is how many there were, `total` how many before the filter.
+- The `port:8080` of the filter of `view` (`port:80,443`) holds for a process that listens on one of
+  those; the program scans for it only while such a filter is set.

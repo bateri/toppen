@@ -68,9 +68,11 @@ pub(crate) fn session_with_control(
     interval: Duration,
 ) -> (Arc<Session>, Arc<FixtureControl>) {
     let control = Arc::new(fixture.control());
+    let ports = Arc::new(fixture.ports());
     let session = Arc::new(Session::new(
         Sampler::start(Box::new(fixture), interval),
         Arc::clone(&control) as Arc<dyn Control>,
+        ports,
         pencere::ViewControl::new(),
     ));
     (session, control)
@@ -727,4 +729,91 @@ fn a_narrow_pane_draws_each_card_at_length_too() {
     page.press("escape").expect("escape goes back");
     page.wait_for(WITHIN, |page| page.says("Name"))
         .expect("the table is back");
+}
+
+// --- The listening ports ------------------------------------------------------------------------------
+
+/// A port a process of the person listens on, with that process, in the fixture machine.
+fn my_listener(session: &Arc<Session>) -> (u16, crate::sample::Process) {
+    let sample = session.sampler.latest().expect("a sample");
+    session
+        .ports
+        .listeners()
+        .iter()
+        .find_map(|listener| {
+            let process = sample
+                .processes
+                .iter()
+                .find(|process| Some(process.pid) == listener.pid && process.user == "lantern")?;
+            Some((listener.port, process.clone()))
+        })
+        .expect("a port of the person's")
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_ports_are_listed_filtered_and_lead_to_their_process_in_the_table() {
+    let (session, mut page) = open_small(WIDE);
+    let (port, process) = my_listener(&session);
+    page.press("p").expect("the ports are asked for");
+    page.wait_for(WITHIN, |page| said(page).contains(" listening sockets"))
+        .expect("the ports are listed");
+    assert!(page.says("Port") && page.says("Proto"), "{}", short(&page));
+    assert!(said(&page).contains(&port.to_string()), "{}", short(&page));
+    // A filter is the program's: a colon and the port leave that one.
+    page.command("filter").expect("the filter is asked for");
+    page.type_text(&format!(":{port}"))
+        .expect("the port is typed");
+    wait_for_said(&mut page, " of ");
+    wait_for_said(&mut page, &process.name);
+    // Enter shows its process in the table, with its details.
+    page.press("enter").expect("the field is left");
+    page.advance(0.3).expect("the page settles");
+    page.press("enter").expect("the row is opened");
+    page.wait_for(WITHIN, |page| page.says("Working folder"))
+        .expect("the process is shown with its details");
+    wait_for_said(&mut page, "Listening on");
+    assert_eq!(
+        session.table().view().filter,
+        format!("pid:{}", process.pid)
+    );
+    assert!(
+        !said(&page).contains(" listening sockets"),
+        "{}",
+        short(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_port_filter_of_the_table_leaves_the_process_that_listens_there() {
+    let (session, mut page) = open_small(WIDE);
+    let (port, process) = my_listener(&session);
+    page.command("filter").expect("the filter is asked for");
+    page.type_text(&format!("port:{port}"))
+        .expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says("1 of 54 processes"))
+        .expect("one process is left");
+    wait_for_said(&mut page, &process.pid.to_string());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_signal_is_asked_for_of_the_process_of_the_row_of_the_ports() {
+    let (session, control) = session_with_control(Fixture::small(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    let (port, process) = my_listener(&session);
+    page.press("p").expect("the ports are asked for");
+    page.command("filter").expect("the filter is asked for");
+    page.type_text(&format!(":{port}"))
+        .expect("the port is typed");
+    page.wait_for(WITHIN, |page| page.says("1 of ")).ok();
+    page.press("enter").expect("the field is left");
+    page.advance(0.4).expect("the page settles");
+    page.command("signal_kill").expect("a kill is asked for");
+    wait_for_said(&mut page, &format!("Kill {}?", process.name));
+    assert!(control.done().is_empty());
+    page.press("escape").expect("the person gives up");
+    page.wait_for(WITHIN, |page| !page.says("Cancel"))
+        .expect("the question is gone");
 }

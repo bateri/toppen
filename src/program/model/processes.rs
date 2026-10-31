@@ -251,6 +251,9 @@ pub struct Table {
     mode: Mode,
     filter_text: String,
     filter: Filter,
+    /// The ports each process listens on (by pid), as the last scan said; only kept up while the
+    /// filter asks about ports.
+    ports: HashMap<u32, Vec<u16>>,
     error: Option<String>,
     hold: bool,
     root: Option<Key>,
@@ -322,6 +325,7 @@ impl Table {
             mode: Mode::Flat,
             filter_text: String::new(),
             filter: Filter::default(),
+            ports: HashMap::new(),
             error: None,
             hold: false,
             root: None,
@@ -335,6 +339,17 @@ impl Table {
             exited: Vec::new(),
             last: HashMap::new(),
         }
+    }
+
+    /// Whether the filter asks about ports, so that a scan is worth making before the next snapshot.
+    #[must_use]
+    pub fn wants_ports(&self) -> bool {
+        self.filter.uses_ports()
+    }
+
+    /// What the last scan said of the ports each process listens on.
+    pub fn set_ports(&mut self, ports: HashMap<u32, Vec<u16>>) {
+        self.ports = ports;
     }
 
     #[must_use]
@@ -478,8 +493,8 @@ impl Table {
             .enumerate()
             .map(|(at, process)| {
                 if eligible[at] {
-                    // The ports a process listens on come with the ports.
-                    self.filter.matches(process, &[])
+                    let ports = self.ports.get(&process.pid).map_or(&[][..], Vec::as_slice);
+                    self.filter.matches(process, ports)
                 } else {
                     None
                 }

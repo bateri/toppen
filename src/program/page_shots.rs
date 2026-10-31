@@ -109,5 +109,17 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "card-disk.png");
+
+    // The ports.
+    let session = session_over(Fixture::small(), Duration::from_secs(1));
+    let mut page = open(&session, BIG, Some(&fonts))?;
+    page.press("p")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.words()
+            .iter()
+            .any(|word| word.ends_with(" listening sockets"))
+    })?;
+    page.advance(0.5)?;
+    save(&page, &fonts, Palette::Dark, "ports.png");
     Ok(())
 }

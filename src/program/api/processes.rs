@@ -309,8 +309,14 @@ fn message(snapshot: &Snapshot, view: &View, at: f64) -> Option<Value> {
 fn watch(session: &Session, feed: &Subscription) {
     let mut watch = session.sampler.watch();
     while let Some(sample) = watch.latest(&|| feed.is_cancelled()) {
+        // A scan costs: it is made only for a filter that asks about ports, and not under the lock.
+        let wants_ports = session.table().wants_ports();
+        let ports = wants_ports.then(|| session.ports.by_pid());
         let (snapshot, view) = {
             let mut table = session.table();
+            if let Some(ports) = ports {
+                table.set_ports(ports);
+            }
             let snapshot = table.snapshot(&sample.processes, sample.at);
             (snapshot, table.view())
         };

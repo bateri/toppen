@@ -185,6 +185,13 @@ end
 -- The process a command is about: the one the panel shows, else the one under the cursor.
 -- { pid, start, name, user, command, children (nil where not known), nice, mine, cwd }.
 function detail.target()
+	-- The ports shown say whose process it is: the row under their cursor.
+	if act.ports_target ~= nil then
+		local target = act.ports_target()
+		if target ~= nil then
+			return target
+		end
+	end
 	local mine = function(user)
 		local person = S.boot.person
 		return person.root or person.name == user
@@ -428,6 +435,14 @@ local function panel()
 		info.cwd and b.text(info.cwd):wrap():family("terminal"):text_size(12):color("dim"):min_w(0)
 			or quiet("The system does not tell it.")
 	))
+	if info.ports ~= nil and #info.ports > 0 then
+		local lines = b.div():col():gap(2)
+		for _, one in info.ports do
+			local host = string.find(one.addr, ":", 1, true) and ("[" .. one.addr .. "]") or one.addr
+			lines:child(b.text(string.format("%s  %s:%d", one.proto, host, one.port)):family("terminal"):text_size(12):color("dim"):truncate():min_w(0))
+		end
+		box:child(field("Listening on", lines))
+	end
 	if #info.parents > 0 then
 		box:child(field("Started by", list_of(info.parents, LISTED.parents, #info.parents, "up")))
 	end

@@ -8,12 +8,15 @@ use pencere::ViewControl;
 
 use crate::model::processes::Table;
 use crate::sample::control::Control;
+use crate::sample::ports::Ports;
 use crate::sampler::Sampler;
 
 pub struct Session {
     pub sampler: Sampler,
     /// What can be done to a process: signals, a nice value, a closer look.
     pub control: Arc<dyn Control>,
+    /// The sockets that listen, scanned when someone asks.
+    pub ports: Arc<Ports>,
     /// The program's hand on the view, to close it for a shell and show it again after.
     pub view: ViewControl,
     table: Mutex<Table>,
@@ -21,10 +24,16 @@ pub struct Session {
 
 impl Session {
     #[must_use]
-    pub fn new(sampler: Sampler, control: Arc<dyn Control>, view: ViewControl) -> Self {
+    pub fn new(
+        sampler: Sampler,
+        control: Arc<dyn Control>,
+        ports: Arc<Ports>,
+        view: ViewControl,
+    ) -> Self {
         Self {
             sampler,
             control,
+            ports,
             view,
             table: Mutex::new(Table::new()),
         }

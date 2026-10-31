@@ -5,7 +5,7 @@
 local kit = require("../lib/kit")
 local tab = require("./table")
 
-local b, u, S = kit.b, kit.u, kit.S
+local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 
 local filter = {}
 
@@ -40,6 +40,9 @@ local function set_text(text)
 		return true
 	end)
 end
+
+-- Puts `text` in the field, as if it was typed.
+filter.set = set_text
 
 -- Adds `term` to what the field holds (once), as if it was typed.
 function filter.add(term)
@@ -108,6 +111,9 @@ function filter.view()
 		tone = view.error and "bad" or nil,
 	})
 	local bar = b.div():row():items_center():gap(8):px(PAD):h(BAR):no_shrink()
+	if act.switch ~= nil and S.width >= 560 then
+		bar:child(act.switch())
+	end
 	bar:child(b.div():grow(1):min_w(0):max_w(480):child(field))
 	bar:child(b.text(count_words(T)):color("dim"):no_shrink())
 	if view.root ~= nil then

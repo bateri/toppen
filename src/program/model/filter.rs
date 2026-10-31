@@ -255,6 +255,14 @@ fn terms_of(text: &str) -> Result<Vec<Term>, String> {
 }
 
 impl Filter {
+    /// Whether the filter asks about ports, which cost a scan to know.
+    #[must_use]
+    pub fn uses_ports(&self) -> bool {
+        self.terms
+            .iter()
+            .any(|term| matches!(term.test, Test::Port(_)))
+    }
+
     /// The filter `text` says, or why it is not one.
     pub fn parse(text: &str) -> Result<Self, String> {
         Ok(Self {

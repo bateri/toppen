@@ -13,6 +13,7 @@ local filter = require("./parts/filter")
 local detail = require("./parts/detail")
 local actions = require("./parts/actions")
 local machine = require("./parts/machine")
+local ports = require("./parts/ports")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 
@@ -54,6 +55,12 @@ for index, card in { "cpu", "memory", "network", "disk" } do
 	}
 end
 list[#list + 1] = { id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = "w", when = idle }
+local function in_ports()
+	return u.holder == "page" and ports.state.open
+end
+for _, entry in ports.commands(idle, in_ports) do
+	list[#list + 1] = entry
+end
 for _, entry in actions.commands(on_process) do
 	list[#list + 1] = entry
 end
@@ -94,6 +101,8 @@ local function render(size, now, reduce_motion)
 	local card = machine.view()
 	if card ~= nil then
 		root:child(card)
+	elseif ports.state.open then
+		root:child(ports.view())
 	else
 		root:child(filter.view())
 		root:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(size.w)))))
@@ -111,6 +120,9 @@ local function command(id, near)
 		act.toggle_pause()
 	elseif id == "filter" then
 		machine.close()
+		if ports.state.open then
+			return u:focus(u:name("ports-filter", "field"))
+		end
 		return filter.focus()
 	elseif id == "tree" then
 		tab.mode("tree")
@@ -136,6 +148,11 @@ local function command(id, near)
 		machine.toggle(string.sub(id, 6))
 	elseif id == "range_next" then
 		machine.next_range()
+	elseif id == "ports" then
+		machine.close()
+		ports.toggle()
+	elseif ports.command(id) then
+		return true
 	else
 		local reply = actions.command(id, near)
 		if reply ~= nil then
@@ -160,6 +177,9 @@ local function on_action(action)
 		reply = machine.action(action)
 	end
 	if reply == nil then
+		reply = ports.action(action)
+	end
+	if reply == nil then
 		reply = detail.action(action)
 	end
 	if reply == nil then
@@ -167,7 +187,7 @@ local function on_action(action)
 	end
 	if reply == nil and from == "commands" and kind == "command" then
 		reply = command(action.id)
-	elseif reply == nil and (from == "row-menu" or from == "signal-menu") and kind == "menu" then
+	elseif reply == nil and (from == "row-menu" or from == "signal-menu" or from == "ports-menu") and kind == "menu" then
 		reply = command(action.entry)
 	elseif reply == nil and string.sub(from, 1, 3) == "do-" and kind == "press" then
 		reply = command(string.sub(from, 4), from)
@@ -186,6 +206,9 @@ local function key(event)
 	local name = event.key
 	if name == "escape" and machine.state.open ~= nil then
 		machine.close()
+		return true
+	elseif name == "escape" and ports.state.open then
+		ports.hide()
 		return true
 	elseif name == "escape" and detail.state.open then
 		detail.close()

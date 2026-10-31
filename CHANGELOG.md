@@ -26,3 +26,7 @@
   and the temperatures; what memory is made of and swap; each network interface with its graph; the
   volumes and the reads and writes of the disks. A graph says what it held under the pointer and how
   long ago, and spans one, five or fifteen minutes.
+- The listening ports: every TCP socket that waits for connections and every bound UDP socket, with
+  the address and the process that holds it, filtered by port, name or user; a signal, a new priority
+  or a shell for the row's process; Enter shows it in the table. `port:3000` in the process filter
+  leaves the processes that listen there, and a process's details list its ports.

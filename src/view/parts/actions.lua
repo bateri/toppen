@@ -65,6 +65,8 @@ local function toast(words, tone, seconds)
 	lib.toast(S.toasts, words, tone, seconds)
 end
 
+actions.toast = toast
+
 -- --- Asking ----------------------------------------------------------------------------------------------------
 
 -- The process a command is about, or nil with a word to the person.

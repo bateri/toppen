@@ -52,6 +52,13 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   interface with its own graph (the arrows choose); disk: every volume and the reads and writes. Rest
   the pointer on a graph to read what it held and how long ago; **w** (or the buttons) changes how far
   back the graphs look: 1, 5 or 15 minutes.
+- **p** (or the switch beside the filter) shows the listening ports instead of the table: each socket
+  that waits for connections (TCP) or is bound to a port (UDP), the address it is on and the process
+  that holds it. Filter by `:3000`, a name or a user; **Enter** shows the process in the table with its
+  details, and the keys of a process (**k** a signal, **n**, **s**, **c**) are about the row's process.
+  **a** copies the address. In the table, `port:3000` leaves the processes that listen there. Where the
+  system does not let you look into a process (another user's, unless toppen runs as root) its sockets
+  are listed without it, or not at all on macOS.
 - Everything the keys do can be pressed with the mouse.
 
 The program looks at the machine only while its view is open and the updates are not paused.
