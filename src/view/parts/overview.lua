@@ -8,8 +8,8 @@ local b, S, SIZE = kit.b, kit.S, kit.SIZE
 
 local overview = {}
 
-local PAGE_PAD = 10
-local GAP = 8
+local PAGE_PAD = SIZE.pad
+local GAP = SIZE.gap
 
 -- Adds `value` to the end of `list`, forgetting the oldest past what the page keeps.
 local function push(list, value)
@@ -132,8 +132,11 @@ end
 -- has a GPU), the same as gauges on a narrow one. The table is what the page is for; the band is
 -- what is left of the machine around it.
 local CARD_H = 124
--- A page this tall has room for the cards with their detail lines.
-local ROOMY_CARD_H = 196
+-- A page this tall has room for the cards with their value on a line of its own; a taller one for
+-- their detail lines too.
+local MIDDLE_CARD_H = 164
+local MIDDLE_PAGE = 600
+local ROOMY_CARD_H = 204
 local ROOMY_PAGE = 900
 local CARD_W = 190
 
@@ -141,7 +144,13 @@ function overview.view()
 	local count = cards.count()
 	if S.width >= CARD_W * count then
 		local w = math.floor((S.width - 2 * PAGE_PAD - (count - 1) * GAP) / count)
-		local list = cards.list(w, S.height >= ROOMY_PAGE and ROOMY_CARD_H or CARD_H)
+		local h = CARD_H
+		if S.height >= ROOMY_PAGE then
+			h = ROOMY_CARD_H
+		elseif S.height >= MIDDLE_PAGE then
+			h = MIDDLE_CARD_H
+		end
+		local list = cards.list(w, h)
 		local row = b.div():row():gap(GAP):px(PAGE_PAD):pt(PAGE_PAD):no_shrink()
 		for _, one in list do
 			row:child(one)

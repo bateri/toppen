@@ -42,6 +42,8 @@ local D = {
 	series = { cpu = {}, mem = {} },
 	-- The values of the variables that look like secrets are shown.
 	reveal = false,
+	-- The variables, by name, whose secret value the person showed one at a time.
+	revealed = {},
 	-- The subscription, and the number of the look that is to come again.
 	sub = nil,
 	round = 0,
@@ -136,6 +138,7 @@ function detail.show(pid, start, name, drawer)
 	D.key = { pid = pid, start = start }
 	D.name = name or ""
 	D.info, D.problem, D.live, D.ended, D.reveal = nil, nil, nil, false, false
+	D.revealed = {}
 	D.series = { cpu = {}, mem = {} }
 	D.round += 1
 	if drawer then
@@ -292,7 +295,7 @@ local function history(title, value, series, role, ceiling, inner)
 end
 
 local function environment(info, inner)
-	local box = b.div():col():gap(6):min_w(0)
+	local box = b.div():col():gap(4):min_w(0)
 	local secrets = 0
 	for _, entry in info.env do
 		if entry.secret then
@@ -304,8 +307,9 @@ local function environment(info, inner)
 	head:child(b.spacer())
 	if secrets > 0 then
 		head:child(u:button("env-reveal", {
-			title = D.reveal and "Hide values" or "Show values",
-			tip = string.format("%d values look like secrets and are hidden", secrets),
+			title = D.reveal and "Hide secrets" or string.format("Show %d secrets", secrets),
+			icon = D.reveal and "assets/icons/eye-off.svg" or "assets/icons/eye.svg",
+			tip = "Values whose names look like passwords, tokens or keys are hidden until shown",
 		}))
 	end
 	box:child(head)
@@ -315,14 +319,23 @@ local function environment(info, inner)
 	end
 	for index = 1, math.min(#info.env, LISTED.env) do
 		local entry = info.env[index]
-		local value = entry.value
-		if entry.secret and not D.reveal then
-			value = "••••••••"
-		end
-		local line = b.div():row():gap(0):min_w(0):clip():family("terminal"):text_size(12)
+		local shown = not entry.secret or D.reveal or D.revealed[entry.name]
+		local line = b.div():row():items_center():gap(0):min_w(0):min_h(22):family("terminal"):text_size(12)
 		line:child(b.text(entry.name):color("dim"):no_shrink())
 		line:child(b.text("="):color("quiet"):no_shrink())
-		line:child(b.text(value):truncate():min_w(0))
+		if shown then
+			line:child(b.text(entry.value):truncate():min_w(0):grow(1))
+		else
+			line:child(b.text("••••••••"):color("quiet"):no_shrink())
+			line:child(b.spacer())
+		end
+		if entry.secret then
+			line:child(u:icon_button("env-eye-" .. index, {
+				icon = shown and "assets/icons/eye-off.svg" or "assets/icons/eye.svg",
+				label = (shown and "Hide " or "Show ") .. entry.name,
+				size = 20,
+			}))
+		end
 		box:child(line)
 	end
 	if #info.env > LISTED.env then
@@ -338,8 +351,8 @@ local function buttons(target)
 		why = string.format("Needs root: this process belongs to %s", target.user ~= "" and kit.user_shown(target.user) or "someone else")
 	end
 	local gone = D.ended
-	row:child(u:button("do-signal", { title = "Signal…", keys = commands.first("signal"), disabled = why ~= nil or gone, tip = why }))
-	row:child(u:button("do-renice", { title = "Priority…", keys = commands.first("renice"), disabled = why ~= nil or gone, tip = why }))
+	row:child(u:button("do-signal", { title = "Signal", keys = commands.first("signal"), disabled = why ~= nil or gone, tip = why }))
+	row:child(u:button("do-renice", { title = "Priority", keys = commands.first("renice"), disabled = why ~= nil or gone, tip = why }))
 	row:child(u:button("do-shell", { title = "Shell here", keys = commands.first("shell"), disabled = gone }))
 	row:child(u:button("do-copy_command", { title = "Copy command", keys = commands.first("copy_command") }))
 	return row
@@ -350,7 +363,7 @@ local function scrolled(box)
 end
 
 local function panel()
-	local width = math.min(D.split.size, S.width - 40)
+	local width = math.min(D.split.size, S.inner - 40)
 	local inner = width - 2 * PAD - 8
 	local info, live = D.info, D.live
 
@@ -493,6 +506,22 @@ function detail.action(action)
 		return true
 	elseif from == "env-reveal" and kind == "press" then
 		D.reveal = not D.reveal
+		D.revealed = {}
+		return true
+	elseif string.sub(from, 1, 8) == "env-eye-" and kind == "press" then
+		local entry = D.info and D.info.env[tonumber(string.sub(from, 9))]
+		if entry ~= nil then
+			if D.reveal then
+				-- Every value was shown: hiding one hides it alone.
+				D.reveal = false
+				for _, other in D.info.env do
+					if other.secret then
+						D.revealed[other.name] = true
+					end
+				end
+			end
+			D.revealed[entry.name] = (not D.revealed[entry.name]) or nil
+		end
 		return true
 	end
 	return nil

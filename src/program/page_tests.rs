@@ -203,9 +203,9 @@ fn a_big_machine_with_sixty_four_threads_fits_the_cards() {
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn pausing_stops_the_program_looking_and_resuming_starts_it_again() {
     let (session, mut page) = open_small(WIDE);
-    assert!(page.says("Pause"));
+    assert!(page.says("pause"));
     page.click("status/item/pause").expect("pause is pressed");
-    page.wait_for(WITHIN, |page| page.says("Paused") && page.says("Resume"))
+    page.wait_for(WITHIN, |page| page.says("Paused") && page.says("resume"))
         .expect("the page says it is paused");
     assert!(session.sampler.paused());
     // A paused page does not change.
@@ -297,9 +297,7 @@ fn the_table_lists_the_busiest_processes_first_under_its_headers() {
 
 /// What the table says from its first row on.
 fn first_row(page: &Page) -> String {
-    let all = said(page);
-    all.split_once("Time|")
-        .map_or_else(String::new, |(_, rest)| rest.to_owned())
+    page.words_in("procs/row/1").join("|")
 }
 
 /// A page's words, cut for a failure message.
@@ -364,7 +362,7 @@ fn the_tree_folds_into_its_branches_and_opens_again() {
     let rows = |page: &Page| {
         page.words()
             .iter()
-            .filter(|word| ["R", "S", "D"].contains(word))
+            .filter(|word| ["running", "sleeping", "disk"].contains(word))
             .count()
     };
     page.wait_for(WITHIN, |page| rows(page) > 20)
@@ -432,7 +430,7 @@ fn a_big_machines_table_asks_for_the_rows_in_view_and_no_more() {
     // The page holds a window, not the table: the words of the page stay few.
     assert!(page.words().len() < 3000, "{}", page.words().len());
     // Far down the list the rows come when they come into view.
-    page.scroll_to("procs/body", 22.0 * 900.0)
+    page.scroll_to("procs/body", 26.0 * 900.0)
         .expect("the table is scrolled");
     page.wait_for(WITHIN, |page| {
         page.words_in("procs/row/905")
@@ -627,8 +625,13 @@ fn a_click_on_a_parent_in_the_panel_shows_that_process() {
     page.advance(0.4).expect("the table settles");
     page.command("detail").expect("the details are asked for");
     wait_for_said(&mut page, &format!("pid {} · lantern", child.pid));
-    page.click(&format!("detail-go/{}/{}/up", parent.pid, parent.start))
-        .expect("the parent is pressed");
+    // The parents are below the graphs: the panel is scrolled to them.
+    let link = format!("detail-go/{}/{}/up", parent.pid, parent.start);
+    let body = page.bounds("detail/body").expect("the panel's body");
+    let at = page.bounds(&link).expect("the parent is listed");
+    page.scroll_to("detail/body", at.y - body.y - 40.0)
+        .expect("the panel is scrolled");
+    page.click(&link).expect("the parent is pressed");
     wait_for_said(&mut page, &format!("pid {} · {}", parent.pid, parent.user));
 }
 

@@ -641,7 +641,7 @@ function machine.view()
 		return nil
 	end
 	M.graphs = {}
-	local inner = math.max(S.width - 2 * PAD - 12, 200)
+	local inner = math.max(S.inner - 2 * PAD - 12, 200)
 	local body = VIEWS[M.open](inner)
 	return b.div():id("machine/body"):scroll():grow(1):min_h(0):child(body)
 end

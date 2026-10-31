@@ -16,6 +16,8 @@ local S = {
 	now = 0,
 	width = 1000,
 	height = 700,
+	-- The width inside the panel that holds the table, the ports or a card's details.
+	inner = 976,
 	-- "wide", "medium" or "narrow", by the page's width; `short` for a page with little height.
 	layout = "wide",
 	short = false,
@@ -40,12 +42,17 @@ local S = {
 	open_card = nil,
 	-- Calls out that the person waits on: a quiet spinner.
 	busy = 0,
-	-- The processes the person marked, by pid; the table shows them in its mark column.
+	-- The processes the person marked, by pid; the table shows a dot before their names.
 	marks = {},
 }
 
 local SIZE = {
 	status = u.theme.size.status,
+	-- The room around the cards and the panel under them, and between them, points.
+	pad = 12,
+	gap = 10,
+	-- The corners of the cards and of the panel.
+	radius = 10,
 	-- The widths the page changes its layout at, points.
 	narrow = 640,
 	medium = 1000,

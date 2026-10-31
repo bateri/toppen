@@ -59,8 +59,8 @@ local TABLE = {
 
 	{ id = "detail", title = "Show or hide the details of the process", group = "Process", keys = { "i" }, when = "process" },
 	{ id = "row_menu", title = "Open the menu of the process", group = "Process", keys = { "." }, when = "process" },
-	{ id = "signal", title = "Send a signal to the process…", group = "Process", keys = { "k", "f9" }, when = "process" },
-	{ id = "renice", title = "Change the priority of the process…", group = "Process", keys = { "n", "f7" }, when = "process" },
+	{ id = "signal", title = "Send a signal to the process", group = "Process", keys = { "k", "f9" }, when = "process" },
+	{ id = "renice", title = "Change the priority of the process", group = "Process", keys = { "n", "f7" }, when = "process" },
 	{ id = "shell", title = "Open a shell in the folder of the process", group = "Process", keys = { "s" }, when = "process" },
 	{ id = "copy_command", title = "Copy the command line", group = "Process", keys = { "c" }, when = "process" },
 	{ id = "copy_pid", title = "Copy the process id", group = "Process", when = "process" },
@@ -72,7 +72,7 @@ local TABLE = {
 	{ id = "settings", title = "Open the settings", group = "Toppen", keys = { "cmd+,", "f2" }, when = "idle" },
 }
 for _, signal in commands.SIGNALS do
-	TABLE[#TABLE + 1] = { id = signal.id, title = signal.title .. "…", group = "Process", when = "process" }
+	TABLE[#TABLE + 1] = { id = signal.id, title = signal.title, group = "Process", when = "process" }
 end
 
 -- The conditions, by name; page.lua fills them in (they depend on parts that need this file).

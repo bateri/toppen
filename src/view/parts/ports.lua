@@ -15,7 +15,7 @@ local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 local ports = {}
 
 local PAD = 10
-local BAR = 34
+local BAR = 44
 local ROW = 22
 
 -- What the view keeps: what the person typed, the order, and what the program told.
@@ -315,7 +315,7 @@ function ports.view()
 		box:child(b.div():grow(1):items_center():justify_center():child(b.text(words):color("dim")))
 		return box
 	end
-	local columns = columns_in(S.width - 2)
+	local columns = columns_in(S.inner - 2)
 	if G.cursor ~= nil and G.cursor.column > #columns then
 		G.cursor.column = #columns
 	end
@@ -378,7 +378,7 @@ local function row_menu(place, at)
 		"-",
 		{ key = "signal_term", title = "End it (TERM)", enabled = owned },
 		{ key = "signal_kill", title = "Kill it (KILL)", enabled = owned },
-		{ key = "signal", title = "More signals…", keys = commands.first("signal"), enabled = owned },
+		{ key = "signal", title = "More signals", keys = commands.first("signal"), enabled = owned },
 		"-",
 		{ key = "copy_address", title = "Copy the address", keys = commands.first("copy_address") },
 		{ key = "copy_port", title = "Copy the port" },

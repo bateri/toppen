@@ -53,11 +53,12 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
 - **t** shows the processes as a tree, **g** groups the ones of one name, **f** folds or opens a
   branch (**[** and **]** every branch), **o** narrows the table to one process and what is below it,
   **m** marks a process.
-- While the pointer is over the table (and for three seconds after a key) the rows keep their places,
-  however the numbers change; "Order held" says how many would have moved, and pressing it lets go.
+- For two seconds after the pointer moves over the table, and three after a key or a click, the rows
+  keep their places however the numbers change, so a row does not slip away as it is aimed at; a
+  pointer at rest holds nothing. "Order held" says how many would have moved, and pressing it lets go.
 - **Enter** (or a double click) shows a process in a panel beside the table: what it takes, as graphs
   of the last minutes, its whole command line, where it works, who started it and what it started
-  (press one to go to it), and its environment (what looks like a secret stays hidden until asked).
+  (press one to go to it), and its environment (what looks like a secret stays hidden; the eye beside it shows it).
   **i** shows or hides it, **Esc** puts it away.
 - What can be done to the process under the cursor: **k** sends a signal (a menu of TERM, INT, HUP,
   KILL, STOP, CONT, USR1 and USR2; toppen asks first, showing the whole command line, and offers to
@@ -117,11 +118,11 @@ edited by hand:
   window writes the table as it is now; `details` opens the panel of a process at the start;
   `privacy` leaves out the machine's name and your own (the summary too).
 - `keys` gives a command other keys than its own, by the id the help and the palette's rows share
-  with the file (`pause`, `tree`, `signal`, `card_gpu`, ...). In the window, press **Change** and then
+  with the file, such as `pause`, `tree`, `signal` and `card_gpu`. In the window, press **Change** and then
   the key; **Backspace** takes a command's keys away, **Reset** gives them back. A key is refused,
   with the reason, when it is not a key, when the table, the fields and the dialogs have it (the
   arrows, Enter, Esc, Tab, Home, End), when the terminal's own shortcuts have it (Cmd+P, Cmd+W, Cmd+1
-  to 9 ...), when it is Option and a letter, or when another command has it.
+  to Cmd+9), when it is Option and a letter, or when another command has it.
 - A file that cannot be read is left exactly where it is: toppen starts with the defaults, says so
   once, and writes nothing over it until it is fixed or removed.
 

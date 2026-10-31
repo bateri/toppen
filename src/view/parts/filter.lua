@@ -10,7 +10,7 @@ local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 local filter = {}
 
 local PAD = 10
-local BAR = 34
+local BAR = 44
 
 -- The field's state: what it holds.
 local F = { value = "" }

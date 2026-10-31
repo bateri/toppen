@@ -76,6 +76,7 @@ end
 local function render(size, now, reduce_motion)
 	u:begin(size, now, reduce_motion)
 	S.now, S.width, S.height = now, size.w, size.h
+	S.inner = size.w - 2 * SIZE.pad
 	S.layout = layout_of(size.w)
 	S.short = size.h < SIZE.short
 	if not S.boot then
@@ -83,15 +84,19 @@ local function render(size, now, reduce_motion)
 	end
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	root:child(overview.view())
+	-- What the page is for sits in one panel under the cards, of their ground and corners: the table
+	-- with its bar, the ports, or the details of a card.
+	local panel = b.div():grow(1):min_h(0):col():rounded(SIZE.radius):bg("raised1"):clip()
 	local card = machine.view()
 	if card ~= nil then
-		root:child(card)
+		panel:child(card)
 	elseif ports.state.open then
-		root:child(ports.view())
+		panel:child(ports.view())
 	else
-		root:child(filter.view())
-		root:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(size.w)))))
+		panel:child(filter.view())
+		panel:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(S.inner)))))
 	end
+	root:child(b.div():grow(1):min_h(0):col():px(SIZE.pad):pt(SIZE.gap):pb(SIZE.pad):child(panel))
 	root:child(status.view())
 	actions.view(root)
 	help.view(root)

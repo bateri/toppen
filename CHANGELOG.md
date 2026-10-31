@@ -13,11 +13,11 @@
 - A table of the processes under the cards: sort by any column, filter (words, `/regex/`, `user:`,
   `pid:`, `state:`, `cpu>`, `mem>`, `!` to negate), a tree, groups by name, folded branches that
   carry the totals of what they hide, the subtree of one process, marks, columns to show and hide,
-  and an order that stays still under the pointer.
+  and an order that stays still for a moment while the pointer moves over it or after a key.
 - The summary of `--once`, the pipe and `--json` lists the busiest processes.
 - The details of a process in a panel beside the table (over it in a narrow pane): graphs of what it
   takes, the whole command line, working folder, parents and children (each one press away) and
-  environment, with what looks like a secret hidden until asked.
+  environment, with what looks like a secret hidden and an eye beside it to show it.
 - Signals (TERM, INT, HUP, KILL, STOP, CONT, USR1, USR2, to one process or to it and what is below
   it), a new priority, a shell in the process's folder, and copies of its command line, id and folder,
   from keys, buttons and the row's menu. A signal is asked for first, and goes to the process that

@@ -61,6 +61,8 @@ function status.action(action)
 		act.toggle_pause()
 	elseif action.key == "help" then
 		act.open_help()
+	elseif action.key == "filter" or action.key == "palette" or action.key == "settings" then
+		act.run(action.key)
 	elseif action.key == "interval" then
 		-- Round the steps: slower, and from the slowest back to the fastest.
 		if S.interval >= STEPS[#STEPS] - 0.01 then
@@ -70,6 +72,16 @@ function status.action(action)
 		end
 	end
 	return true
+end
+
+-- The words of an item with the keys of its command in caps before them, as the host writes them.
+local function hint(id, words)
+	local keys = commands.first(id)
+	local row = b.div():row():items_center():gap(5):no_shrink()
+	if keys ~= nil then
+		row:child(kit.u:kbd(keys))
+	end
+	return row:child(b.text(words))
 end
 
 function status.view()
@@ -97,19 +109,31 @@ function status.view()
 		priority = 5,
 	}
 	finish[#finish + 1] = {
+		key = "filter",
+		words = hint("filter", "filter"),
+		press = true,
+		tip = "Filter the processes",
+		priority = 2,
+	}
+	finish[#finish + 1] = {
+		key = "palette",
+		words = hint("palette", "commands"),
+		press = true,
+		tip = "Find a command or a process",
+		priority = 3,
+	}
+	finish[#finish + 1] = {
 		key = "help",
-		words = "Keys",
+		words = hint("help", "keys"),
 		press = true,
 		tip = "Show the keys and the commands",
-		keys = commands.first("help"),
 		priority = 6,
 	}
 	finish[#finish + 1] = {
 		key = "pause",
-		words = S.paused and "Resume" or "Pause",
+		words = hint("pause", S.paused and "resume" or "pause"),
 		press = true,
 		tip = S.paused and "Resume updates" or "Pause updates",
-		keys = commands.first("pause"),
 		tone = S.paused and "warn" or nil,
 		priority = 8,
 	}

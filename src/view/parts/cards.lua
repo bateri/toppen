@@ -10,16 +10,18 @@ local b, u, S = kit.b, kit.u, kit.S
 
 local cards = {}
 
-local PAD = 12
+local PAD = 14
 local GAP = 6
 local HEAD = 16
-local BIG = 32
-local LINE = 15
+local BIG = 34
+local LINE = 16
 -- The least a graph is worth drawing at.
 local GRAPH_MIN = 28
 local STRIP = 14
--- A card shorter than this is compact.
-local ROOMY = 190
+-- A card shorter than this is compact: its value shares the line of its title.
+local ROOMY = 150
+-- A card shorter than this has room for one line under its graph.
+local TALL = 190
 
 local function dim(words)
 	return b.text(words):color("dim"):truncate():min_w(0)
@@ -46,12 +48,27 @@ local SECOND = "magenta"
 -- An arrow and a rate: the direction a network or a disk moves bytes in. `tight` is a card too
 -- narrow for both rates at the size of a compact card's head.
 local function flow(arrow, role, per_second, size, tight)
-	if size < 22 then
+	if size < 22 and tight ~= nil then
 		size = tight and 12 or 14
 	end
 	return b.div():row():items_center():gap(3):no_shrink()
 		:child(kit.icon(arrow, size - 6, role))
 		:child(value_text(format.short_bytes(per_second) .. "/s", "foreground", size))
+end
+
+-- The two rates of a network or a disk, down and up, side by side: as big as `size` where `w` has
+-- room for both, smaller where it has not.
+local function flows(down, up, size, tight, w)
+	if w ~= nil then
+		local words = math.max(#format.short_bytes(down), #format.short_bytes(up)) + 2
+		-- A character of the terminal's font is about 0.6 of its size wide; an arrow is one more.
+		local fits = math.floor((w - 12) / 2 / (0.6 * words + 0.8))
+		size = math.max(14, math.min(size, fits))
+	end
+	local row = b.div():row():items_center():gap(12):no_shrink()
+	row:child(flow("arrow-down", FIRST, down, size, tight))
+	row:child(flow("arrow-up", SECOND, up, size, tight))
+	return row
 end
 
 -- The card: `spec` is { title =, side =, big = function(size) -> element, graph = function(w, h) ->
@@ -67,16 +84,19 @@ local function card(spec, w, h)
 	local lines = spec.lines
 	local used = 2 * PAD
 	local head = b.div():row():items_center():gap(8):h(HEAD):no_shrink()
-		:child(b.text(spec.title):weight(600):color("foreground"):no_shrink())
+		:child(b.text(spec.title):weight(650):color(roomy and "dim" or "foreground"):no_shrink())
 	if spec.side and w >= 200 then
-		head:child(b.div():grow(1):min_w(0):child(quiet(spec.side)))
+		head:child(b.div():grow(1):min_w(0):row():justify_end():child(quiet(spec.side)))
 	else
 		head:child(b.spacer())
 	end
 	if roomy then
 		box:child(head)
-		box:child(b.div():row():items_center():h(BIG):no_shrink():child(spec.big(26)))
+		box:child(b.div():row():items_center():h(BIG):no_shrink():child(spec.big(28, nil, inner_w)))
 		used += HEAD + BIG + 2 * GAP
+		if h < TALL and #lines > 1 then
+			lines = { lines[1] }
+		end
 	else
 		head:child(spec.big(18, w < 270))
 		box:child(head)
@@ -85,7 +105,7 @@ local function card(spec, w, h)
 	end
 	used += #lines * LINE + (#lines > 0 and GAP or 0)
 	local graph_h = h - used
-	local strip = spec.strip and roomy and graph_h - STRIP - GAP >= GRAPH_MIN * 1.5
+	local strip = spec.strip and roomy and graph_h - STRIP - GAP >= GRAPH_MIN
 	if strip then
 		graph_h -= STRIP + GAP
 	end
@@ -198,11 +218,8 @@ local function network_card()
 		key = "network",
 		title = "Network",
 		compact = compact,
-		big = function(size, tight)
-			local row = b.div():row():items_center():gap(10):no_shrink()
-			row:child(flow("arrow-down", FIRST, net and net.rx or 0, size, tight))
-			row:child(flow("arrow-up", SECOND, net and net.tx or 0, size, tight))
-			return row
+		big = function(size, tight, w)
+			return flows(net and net.rx or 0, net and net.tx or 0, size, tight, w)
 		end,
 		graph = function(w, h)
 			local count = cards.window()
@@ -231,11 +248,8 @@ local function disk_card()
 		spec.compact = dim(string.format("%s of %s · %s", format.bytes(volume.used), format.bytes(volume.total), format.percent(volume.total > 0 and volume.used / volume.total * 100 or 0)))
 	end
 	if io then
-		spec.big = function(size, tight)
-			local row = b.div():row():items_center():gap(10):no_shrink()
-			row:child(flow("arrow-down", FIRST, disk and disk.read or 0, size, tight))
-			row:child(flow("arrow-up", SECOND, disk and disk.write or 0, size, tight))
-			return row
+		spec.big = function(size, tight, w)
+			return flows(disk and disk.read or 0, disk and disk.write or 0, size, tight, w)
 		end
 		spec.graph = function(w, h)
 			local count = cards.window()
