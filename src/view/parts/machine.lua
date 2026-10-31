@@ -1,4 +1,4 @@
--- The details of a card of the overview: the machine's CPU, memory, network or disk at length, in
+-- The details of a card of the overview: the machine's CPU, memory, network, disk or GPU at length, in
 -- place of the table until the person goes back. Each is drawn from what the overview already told
 -- (the series of the page, the last sample); the program is told which card is open only so that it
 -- reads the temperature sensors while one is (`card`).
@@ -24,11 +24,11 @@ local RANGES = {
 	{ key = "900", title = "15 min" },
 }
 
-local CARDS = { "cpu", "memory", "network", "disk" }
-local TITLES = { cpu = "CPU", memory = "Memory", network = "Network", disk = "Disk" }
+local CARDS = { "cpu", "memory", "network", "disk", "gpu" }
+local TITLES = { cpu = "CPU", memory = "Memory", network = "Network", disk = "Disk", gpu = "GPU" }
 
 local M = {
-	-- The card open: "cpu", "memory", "network", "disk", or nil.
+	-- The card open: "cpu", "memory", "network", "disk", "gpu", or nil.
 	open = nil,
 	-- Seconds the graphs span.
 	range = 60,
@@ -571,9 +571,69 @@ local function disk_view(inner)
 	return box
 end
 
+-- --- GPU -----------------------------------------------------------------------------------------------------------
+
+-- Each GPU the machine has: how busy it is over time, the memory it uses, the parts of it that are
+-- busy on their own, and its temperature where the system tells it.
+local function gpu_view(inner)
+	local sample = S.sample
+	local gpus = sample and sample.gpus or {}
+	local busiest = 0
+	for _, one in gpus do
+		busiest = math.max(busiest, one.load)
+	end
+	local now = { tone(format.percent(busiest), format.load_role(busiest)) }
+	if #gpus > 1 then
+		now[#now + 1] = dim(string.format("%d GPUs", #gpus))
+	end
+	local box = b.div():col():gap(14):p(PAD):w(inner + 2 * PAD):no_shrink()
+	box:child(title_row("gpu", #gpus > 0 and now or {}))
+	if #gpus == 0 then
+		box:child(quiet("This machine tells nothing of a GPU."))
+		return box
+	end
+	local many = #gpus > 1
+	if not many then
+		box:child(quiet(gpus[1].name))
+	end
+	for index, one in gpus do
+		local role = format.load_role(one.load)
+		if many then
+			local head = b.div():row():items_center():gap(10):min_w(0)
+			head:child(b.text(one.name):weight(600):truncate():min_w(0))
+			head:child(b.spacer())
+			head:child(tone(format.percent(one.load), role))
+			box:child(head)
+		end
+		local values = S.gpus[index] or {}
+		local graph_box, back = plot("graph/gpu/" .. index, { { values = values, role = role } }, 100, inner, many and 80 or 110)
+		local at = back and at_back(values, back)
+		box:child(caption(many and "Use" or "GPU use", nil, at and tone(string.format("%.1f%%", at), role), back))
+		box:child(graph_box)
+		if one.memoryUsed ~= nil and one.memoryTotal ~= nil and one.memoryTotal > 0 then
+			local share = one.memoryUsed / one.memoryTotal
+			box:child(meter_row("Memory", share, string.format("%s of %s", format.bytes(one.memoryUsed), format.bytes(one.memoryTotal)), inner, 120))
+		elseif one.memoryUsed ~= nil then
+			box:child(dim(string.format("Memory in use: %s, shared with the machine", format.bytes(one.memoryUsed))))
+		end
+		if #one.engines > 0 then
+			box:child(label("Engines"))
+			for _, engine in one.engines do
+				box:child(meter_row(engine.name, engine.load / 100, format.percent(engine.load), inner, 120))
+			end
+		end
+		if one.celsius ~= nil then
+			box:child(meter_row("Temperature", math.min(one.celsius / 100, 1), string.format("%.1f °C", one.celsius), inner, 120))
+		elseif not many then
+			box:child(quiet("This system tells no temperature of the GPU."))
+		end
+	end
+	return box
+end
+
 -- --- The view ------------------------------------------------------------------------------------------------
 
-local VIEWS = { cpu = cpu_view, memory = memory_view, network = network_view, disk = disk_view }
+local VIEWS = { cpu = cpu_view, memory = memory_view, network = network_view, disk = disk_view, gpu = gpu_view }
 
 -- What takes the place of the table while a card is open. `nil` when none is.
 function machine.view()

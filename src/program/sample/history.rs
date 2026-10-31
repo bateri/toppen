@@ -21,6 +21,17 @@ pub struct Point {
     pub tx: f64,
     pub read: f64,
     pub write: f64,
+    /// The busiest GPU's load, 0–100 (0 on a machine with none).
+    pub gpu: f64,
+    /// Each GPU, whole percent.
+    pub gpus: Vec<u8>,
+}
+
+/// A load as a whole percent.
+fn whole(load: f64) -> u8 {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let whole = load.round().clamp(0.0, 100.0) as u8;
+    whole
 }
 
 impl Point {
@@ -29,22 +40,15 @@ impl Point {
         Self {
             at: sample.at,
             cpu: sample.cpu.total,
-            cores: sample
-                .cpu
-                .cores
-                .iter()
-                .map(|core| {
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    let whole = core.round().clamp(0.0, 100.0) as u8;
-                    whole
-                })
-                .collect(),
+            cores: sample.cpu.cores.iter().map(|core| whole(*core)).collect(),
             memory: super::percent(sample.memory.used, sample.memory.total),
             swap: super::percent(sample.memory.swap_used, sample.memory.swap_total),
             rx: sample.network.rx,
             tx: sample.network.tx,
             read: sample.disk.read,
             write: sample.disk.write,
+            gpu: sample.gpus.iter().map(|gpu| gpu.load).fold(0.0, f64::max),
+            gpus: sample.gpus.iter().map(|gpu| whole(gpu.load)).collect(),
         }
     }
 }
@@ -93,6 +97,8 @@ mod tests {
             tx: 0.0,
             read: 0.0,
             write: 0.0,
+            gpu: 0.0,
+            gpus: Vec::new(),
         }
     }
 

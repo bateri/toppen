@@ -25,6 +25,7 @@ local function history(told)
 	series.cpu, series.mem, series.swap = told.cpu, told.mem, told.swap
 	series.rx, series.tx = told.rx, told.tx
 	series.read, series.write = told.read, told.write
+	series.gpu = told.gpu
 	series.at = told.at
 	-- Each logical processor's own series, from the columns of samples.
 	S.cores = {}
@@ -38,11 +39,26 @@ local function history(told)
 			list[#list + 1] = value
 		end
 	end
+	-- And each GPU's, the same way.
+	S.gpus = {}
+	for _, row in told.gpus do
+		for index, value in row do
+			local list = S.gpus[index]
+			if list == nil then
+				list = {}
+				S.gpus[index] = list
+			end
+			list[#list + 1] = value
+		end
+	end
 	while #series.cpu > SIZE.kept do
 		for _, list in series do
 			table.remove(list, 1)
 		end
 		for _, list in S.cores do
+			table.remove(list, 1)
+		end
+		for _, list in S.gpus do
 			table.remove(list, 1)
 		end
 	end
@@ -78,6 +94,17 @@ local function sampled(told)
 	push(series.read, told.disk.read)
 	push(series.write, told.disk.write)
 	push(series.at, told.at)
+	local busiest = 0
+	for index, one in told.gpus do
+		busiest = math.max(busiest, one.load)
+		local list = S.gpus[index]
+		if list == nil then
+			list = {}
+			S.gpus[index] = list
+		end
+		push(list, one.load)
+	end
+	push(series.gpu, busiest)
 	for index, value in told.cpu.cores do
 		local list = S.cores[index]
 		if list == nil then
@@ -101,17 +128,19 @@ function overview.start()
 	end)
 end
 
--- The band over the table: four cards in a row on a wide page, four gauges on a narrow one. The
--- table is what the page is for; the band is what is left of the machine around it.
+-- The band over the table: the cards in a row on a wide page (four, and a fifth where the machine
+-- has a GPU), the same as gauges on a narrow one. The table is what the page is for; the band is
+-- what is left of the machine around it.
 local CARD_H = 124
 -- A page this tall has room for the cards with their detail lines.
 local ROOMY_CARD_H = 196
 local ROOMY_PAGE = 900
-local WIDE_FROM = 760
+local CARD_W = 190
 
 function overview.view()
-	if S.width >= WIDE_FROM then
-		local w = math.floor((S.width - 2 * PAGE_PAD - 3 * GAP) / 4)
+	local count = cards.count()
+	if S.width >= CARD_W * count then
+		local w = math.floor((S.width - 2 * PAGE_PAD - (count - 1) * GAP) / count)
 		local list = cards.list(w, S.height >= ROOMY_PAGE and ROOMY_CARD_H or CARD_H)
 		local row = b.div():row():gap(GAP):px(PAGE_PAD):pt(PAGE_PAD):no_shrink()
 		for _, one in list do

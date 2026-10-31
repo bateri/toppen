@@ -1,4 +1,5 @@
-//! What sysinfo does not say on macOS: how pressed memory is.
+//! What sysinfo does not say on macOS: how pressed memory is, what the disks moved, and what the
+//! processes and sockets are.
 
 /// How pressed memory is, 0–100: the complement of `kern.memorystatus_level`, the share of memory
 /// the system counts as free (the figure behind Activity Monitor's memory pressure graph).
@@ -78,6 +79,45 @@ pub fn memory_breakdown(_total: u64) -> Option<super::Breakdown> {
 pub struct Task {
     pub nice: i32,
     pub threads: u32,
+}
+
+/// The bytes read and written since boot by each whole disk, out of the `IOMedia` entries of the
+/// registry: a whole disk's media sits under its `IOBlockStorageDriver`, which keeps the counters.
+/// (The partitions and the volumes the system builds on a disk are not under a driver, so no byte
+/// is counted twice.)
+#[must_use]
+pub fn disk_counters_of(media: &[super::iokit::Entry]) -> super::linux::Counters {
+    let mut found = super::linux::Counters::new();
+    for entry in media {
+        let Some(driver) = entry.parent.as_deref() else {
+            continue;
+        };
+        if driver.name != "IOBlockStorageDriver" {
+            continue;
+        }
+        let (Some(name), Some(stats)) = (
+            entry.get("BSD Name").and_then(super::iokit::Value::text),
+            driver.get("Statistics").and_then(super::iokit::Value::dict),
+        ) else {
+            continue;
+        };
+        let bytes = |key: &str| stats.get(key).and_then(super::iokit::Value::whole);
+        if let (Some(read), Some(written)) = (bytes("Bytes (Read)"), bytes("Bytes (Write)")) {
+            found.insert(name.to_owned(), (read, written));
+        }
+    }
+    found
+}
+
+/// The disks as they are now.
+#[cfg(target_os = "macos")]
+pub fn disk_counters() -> super::linux::Counters {
+    disk_counters_of(&super::iokit::services(c"IOMedia"))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn disk_counters() -> super::linux::Counters {
+    super::linux::Counters::new()
 }
 
 #[cfg(target_os = "macos")]
@@ -331,5 +371,51 @@ mod socket_tests {
         );
         let udp_found = mine(Proto::Udp, udp_port).expect("the UDP socket is found");
         assert_eq!((udp_found.pid, udp_found.addr.as_str()), (Some(me), "*"));
+    }
+}
+
+#[cfg(test)]
+mod disk_tests {
+    use super::*;
+    use crate::sample::iokit::{Entry, Value};
+    use std::collections::HashMap;
+
+    fn media(name: &str, over: &str, read: i64, written: i64) -> Entry {
+        Entry {
+            name: "media".to_owned(),
+            properties: HashMap::from([("BSD Name".to_owned(), Value::Text(name.to_owned()))]),
+            parent: Some(Box::new(Entry {
+                name: over.to_owned(),
+                properties: HashMap::from([(
+                    "Statistics".to_owned(),
+                    Value::Dict(HashMap::from([
+                        ("Bytes (Read)".to_owned(), Value::Int(read)),
+                        ("Bytes (Write)".to_owned(), Value::Int(written)),
+                    ])),
+                )]),
+                parent: None,
+            })),
+        }
+    }
+
+    #[test]
+    fn only_the_media_under_a_storage_driver_are_disks_and_each_says_its_bytes() {
+        let found = disk_counters_of(&[
+            media("disk0", "IOBlockStorageDriver", 5_000, 3_000),
+            media("disk0s1", "IOGUIDPartitionScheme", 1, 1),
+            media("disk3", "AppleAPFSContainerScheme", 2, 2),
+        ]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found["disk0"], (5_000, 3_000));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn this_mac_has_a_disk_that_has_moved_bytes() {
+        let found = disk_counters();
+        assert!(
+            found.values().any(|&(read, written)| read + written > 0),
+            "{found:?}"
+        );
     }
 }

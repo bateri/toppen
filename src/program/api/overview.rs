@@ -43,13 +43,19 @@ struct History {
     tx: Vec<f64>,
     read: Vec<f64>,
     write: Vec<f64>,
+    /// The busiest GPU's share (0 on a machine with none).
+    gpu: Vec<f64>,
+    /// For each sample, each GPU, whole percent.
+    gpus: Vec<Vec<u8>>,
 }
 
 /// The history as columns, the newest points that fit a message.
 fn history(points: &[Point], interval: Duration) -> History {
-    let width = points.first().map_or(0, |point| point.cores.len());
+    let width = points
+        .first()
+        .map_or(0, |point| point.cores.len() + point.gpus.len());
     // What a point comes to, written: the numbers, and a processor's share is up to four characters.
-    let room = HISTORY_BYTES / (120 + 4 * width);
+    let room = HISTORY_BYTES / (140 + 4 * width);
     let points = &points[points.len().saturating_sub(room)..];
     History {
         kind: "history",
@@ -63,6 +69,8 @@ fn history(points: &[Point], interval: Duration) -> History {
         tx: points.iter().map(|point| point.tx.round()).collect(),
         read: points.iter().map(|point| point.read.round()).collect(),
         write: points.iter().map(|point| point.write.round()).collect(),
+        gpu: points.iter().map(|point| tenth(point.gpu)).collect(),
+        gpus: points.iter().map(|point| point.gpus.clone()).collect(),
     }
 }
 
@@ -143,6 +151,23 @@ struct DiskMessage<'a> {
 }
 
 #[derive(Serialize)]
+struct EngineMessage<'a> {
+    name: &'a str,
+    load: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GpuMessage<'a> {
+    name: &'a str,
+    load: f64,
+    memory_used: Option<u64>,
+    memory_total: Option<u64>,
+    celsius: Option<f64>,
+    engines: Vec<EngineMessage<'a>>,
+}
+
+#[derive(Serialize)]
 struct SampleMessage<'a> {
     kind: &'static str,
     at: f64,
@@ -153,6 +178,7 @@ struct SampleMessage<'a> {
     load: [f64; 3],
     uptime: u64,
     sensors: Vec<SensorMessage<'a>>,
+    gpus: Vec<GpuMessage<'a>>,
 }
 
 /// The volumes with the one the person's files are on first.
@@ -242,6 +268,26 @@ fn message(sample: &Sample) -> SampleMessage<'_> {
                 celsius: tenth(sensor.celsius),
             })
             .collect(),
+        gpus: sample
+            .gpus
+            .iter()
+            .take(LISTED)
+            .map(|gpu| GpuMessage {
+                name: &gpu.name,
+                load: tenth(gpu.load),
+                memory_used: gpu.memory_used,
+                memory_total: gpu.memory_total,
+                celsius: gpu.celsius.map(tenth),
+                engines: gpu
+                    .engines
+                    .iter()
+                    .map(|engine| EngineMessage {
+                        name: &engine.name,
+                        load: tenth(engine.load),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -299,11 +345,39 @@ mod tests {
         let value = serde_json::to_value(&found).unwrap();
         assert_eq!(value["kind"], "history");
         for column in [
-            "at", "cpu", "cores", "mem", "swap", "rx", "tx", "read", "write",
+            "at", "cpu", "cores", "mem", "swap", "rx", "tx", "read", "write", "gpu", "gpus",
         ] {
             assert_eq!(value[column].as_array().unwrap().len(), 30, "{column}");
         }
         assert_eq!(value["cores"][0].as_array().unwrap().len(), 8);
+        assert_eq!(value["gpus"][0].as_array().unwrap().len(), 1);
+        assert!(value["gpu"][29].as_f64().unwrap() > 0.0);
+    }
+
+    #[test]
+    fn a_machine_without_a_gpu_has_empty_gpu_columns_and_samples() {
+        let found = history(&points(Fixture::large(), 5), Duration::from_secs(1));
+        let value = serde_json::to_value(&found).unwrap();
+        assert_eq!(value["gpus"][0], serde_json::json!([]));
+        assert_eq!(value["gpu"][0].as_f64(), Some(0.0));
+        let sample = Fixture::large().sample();
+        assert_eq!(
+            serde_json::to_value(message(&sample)).unwrap()["gpus"],
+            serde_json::json!([])
+        );
+    }
+
+    #[test]
+    fn the_gpus_of_a_sample_say_their_load_memory_and_temperature_when_they_have_them() {
+        let value = serde_json::to_value(message(&Fixture::duo().sample())).unwrap();
+        let gpus = value["gpus"].as_array().unwrap();
+        assert_eq!(gpus.len(), 2);
+        assert_eq!(gpus[0]["name"], "Fixture RTX 4090");
+        assert!(gpus[0]["memoryTotal"].is_u64() && gpus[0]["memoryUsed"].is_u64());
+        assert!(gpus[0]["celsius"].is_f64());
+        let apple = serde_json::to_value(message(&Fixture::small().sample())).unwrap();
+        assert!(apple["gpus"][0]["memoryTotal"].is_null());
+        assert_eq!(apple["gpus"][0]["engines"][0]["name"], "Renderer");
     }
 
     #[test]

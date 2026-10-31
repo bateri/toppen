@@ -9,6 +9,7 @@ use sysinfo::{
     UpdateKind, Users,
 };
 
+use super::gpu::{Gpus, celsius_of};
 use super::{
     Cpu, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Sensor, Source,
     Volume, linux, macos,
@@ -122,6 +123,7 @@ pub struct System {
     users: Users,
     ticks: u64,
     features: Features,
+    gpus: Gpus,
     /// The temperature sensors, listed the first time a card's details are open.
     components: Option<Components>,
     detail: bool,
@@ -162,14 +164,12 @@ impl System {
         let networks = Networks::new_with_refreshed_list();
         let disks =
             Disks::new_with_refreshed_list_specifics(DiskRefreshKind::nothing().with_storage());
-        let counters = if cfg!(target_os = "linux") {
-            linux::read_diskstats()
-        } else {
-            linux::Counters::new()
-        };
+        let counters = disk_counters();
+        let mut gpus = Gpus::new();
         let features = Features {
             pressure: pressure().is_some(),
             disk_io: !counters.is_empty(),
+            gpu: !gpus.read().is_empty(),
         };
         let mut system = Self {
             sys,
@@ -181,6 +181,7 @@ impl System {
             users: Users::new_with_refreshed_list(),
             ticks: 0,
             features,
+            gpus,
             components: None,
             detail: false,
         };
@@ -288,6 +289,15 @@ impl System {
 impl Default for System {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// What the disks have moved since boot, where this system says.
+fn disk_counters() -> linux::Counters {
+    if cfg!(target_os = "macos") {
+        macos::disk_counters()
+    } else {
+        linux::read_diskstats()
     }
 }
 
@@ -431,7 +441,7 @@ impl Source for System {
         };
 
         let devices = if self.features.disk_io {
-            let counters = linux::read_diskstats();
+            let counters = disk_counters();
             let devices = linux::rates(&self.counters, &counters, elapsed);
             self.counters = counters;
             devices
@@ -452,6 +462,16 @@ impl Source for System {
 
         let processes = self.processes(seconds);
         let load = Sysinfo::load_average();
+        let sensors = self.sensors();
+        let mut gpus = if self.features.gpu {
+            self.gpus.read()
+        } else {
+            Vec::new()
+        };
+        // One GPU is the machine's; with several, a sensor cannot be said to be of one of them.
+        if let [only] = gpus.as_mut_slice() {
+            only.celsius = only.celsius.or_else(|| celsius_of(&sensors));
+        }
         Sample {
             at: now(),
             cpu,
@@ -461,7 +481,8 @@ impl Source for System {
             load: [load.one, load.five, load.fifteen],
             uptime: Sysinfo::uptime(),
             processes,
-            sensors: self.sensors(),
+            sensors,
+            gpus,
         }
     }
 }
@@ -469,6 +490,25 @@ impl Source for System {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_features_of_the_real_machine_say_what_its_samples_have() {
+        let mut system = System::new();
+        let machine = system.machine();
+        let sample = system.sample();
+        // A GPU is there or it is not; what is there says a share and has a name.
+        assert_eq!(machine.features.gpu, !sample.gpus.is_empty());
+        for gpu in &sample.gpus {
+            assert!(!gpu.name.is_empty());
+            assert!((0.0..=100.0).contains(&gpu.load), "{gpu:?}");
+        }
+        // And a Mac says what its disks read and write.
+        #[cfg(target_os = "macos")]
+        assert!(
+            machine.features.disk_io,
+            "a Mac's storage drivers keep the counters"
+        );
+    }
 
     fn mount(device: &str, mount: &str, fs: &str) -> Mount {
         Mount {

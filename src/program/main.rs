@@ -49,7 +49,7 @@ const NO_VIEWS: &str = "This terminal shows no views. toppen opens as a monitor 
 type Parts = (Box<dyn Source>, Arc<dyn Control>, Arc<Ports>);
 
 /// Where the measurements come from: the machine the program runs on, or, in a debug build, the
-/// fixture machine that `TOPPEN_FIXTURE=<name>` names (`small`, `large`), which is what the tests and
+/// fixture machine that `TOPPEN_FIXTURE=<name>` names (`small`, `large`, `duo`), which is what the tests and
 /// the pictures of `docs/` look at.
 fn source() -> Result<Parts, String> {
     #[cfg(debug_assertions)]

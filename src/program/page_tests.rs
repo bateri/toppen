@@ -731,6 +731,91 @@ fn a_narrow_pane_draws_each_card_at_length_too() {
         .expect("the table is back");
 }
 
+// --- The GPU ------------------------------------------------------------------------------------------
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_machine_with_a_gpu_has_its_card_and_the_card_opens_to_its_details() {
+    let (_session, mut page) = open_small(WIDE);
+    // The card is among the others, with the memory the GPU uses.
+    assert!(page.says("GPU"), "{}", short(&page));
+    assert!(said(&page).contains(" in use"), "{}", short(&page));
+    page.press("5").expect("the GPU is asked for");
+    page.wait_for(WITHIN, |page| page.says("GPU use"))
+        .expect("the GPU is drawn at length");
+    assert!(
+        said(&page).contains("Fixture M1 Pro GPU"),
+        "{}",
+        short(&page)
+    );
+    for part in ["Engines", "Renderer", "Tiler"] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    assert!(
+        said(&page).contains("shared with the machine"),
+        "{}",
+        short(&page)
+    );
+    // The temperature is told while the details are open: the program reads the sensors then.
+    wait_for_said(&mut page, " °C");
+    assert!(!page.says("Name"), "the table stays away: {}", short(&page));
+    page.hover("graph/gpu/1")
+        .expect("the pointer rests on the graph");
+    wait_for_said(&mut page, " ago");
+    page.press("escape").expect("escape goes back");
+    page.wait_for(WITHIN, |page| page.says("Name") && !page.says("GPU use"))
+        .expect("the table is back");
+    // The card is pressed with the mouse as well.
+    page.click("card/gpu").expect("the card is pressed");
+    page.wait_for(WITHIN, |page| page.says("GPU use"))
+        .expect("the GPU is drawn at length again");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_machine_with_two_gpus_lists_each_with_the_memory_of_its_own() {
+    let session = session_over(Fixture::duo(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    assert!(said(&page).contains("2 GPUs"), "{}", short(&page));
+    page.press("5").expect("the GPU is asked for");
+    page.wait_for(WITHIN, |page| page.says("Fixture RTX 4090"))
+        .expect("the GPUs are drawn at length");
+    for part in ["Fixture RTX 4070", "Memory bus", "Temperature"] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    assert!(said(&page).contains(" of 24.0 GiB"), "{}", short(&page));
+    assert!(said(&page).contains(" of 12.0 GiB"), "{}", short(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_machine_without_a_gpu_has_no_card_for_it_and_the_layout_is_whole() {
+    let session = session_over(Fixture::large(), TICK);
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    for card in ["CPU", "Memory", "Network", "Disk"] {
+        assert!(page.says(card), "{card}: {}", short(&page));
+    }
+    assert!(!page.says("GPU"), "{}", short(&page));
+    // The key of the GPU's card is not a key of this machine's.
+    page.press("5").expect("the key is pressed");
+    page.advance(0.4).expect("the page settles");
+    assert!(
+        page.says("Name") && !page.says("GPU use"),
+        "{}",
+        short(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_narrow_pane_has_a_gauge_for_the_gpu_that_opens_it() {
+    let (_session, mut page) = open_small(PANE);
+    assert!(said(&page).contains("GPU"), "{}", short(&page));
+    page.click("card/gpu").expect("the gauge is pressed");
+    page.wait_for(WITHIN, |page| page.says("GPU use"))
+        .expect("the GPU is drawn at length");
+}
+
 // --- The listening ports ------------------------------------------------------------------------------
 
 /// A port a process of the person listens on, with that process, in the fixture machine.

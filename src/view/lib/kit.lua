@@ -26,9 +26,11 @@ local S = {
 	interval = 1,
 	paused = false,
 	-- What the machine did lately, each series newest last (`overview`), and the sample last told.
-	series = { at = {}, cpu = {}, mem = {}, swap = {}, rx = {}, tx = {}, read = {}, write = {} },
+	series = { at = {}, cpu = {}, mem = {}, swap = {}, rx = {}, tx = {}, read = {}, write = {}, gpu = {} },
 	-- Each logical processor's share, one series each; and the network's by interface name.
 	cores = {},
+	-- Each GPU's load, one series each.
+	gpus = {},
 	ifaces = {},
 	iface_count = 0,
 	sample = nil,

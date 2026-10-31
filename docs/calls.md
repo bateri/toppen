@@ -29,7 +29,7 @@ What the page needs before it draws, once. Params: none.
     "cpu": "Apple M1 Pro", "threads": 10, "cores": 10,
     "memory": 34359738368, "booted": 1761600000
   },
-  "features": { "pressure": true, "diskIo": false },
+  "features": { "pressure": true, "diskIo": true, "gpu": true },
   "sampling": { "interval": 1.0, "paused": false, "min": 0.5, "max": 10.0 }
 }
 ```
@@ -42,6 +42,8 @@ it, not with a zero.
 
 - `pressure`: the system's own measure of how pressed memory is (macOS's memory pressure, Linux's PSI).
 - `diskIo`: reads and writes of the disks, in bytes a second.
+- `gpu`: at least one graphics processor that says how busy it is (Apple's accelerators, the DRM
+  drivers of Linux, NVIDIA's driver). Without it there is no GPU card and no GPU in the samples.
 
 ### `sampling`
 
@@ -52,8 +54,8 @@ While paused the program looks at nothing.
 ### `card`
 
 Which card's details the person has open, so that the program reads what costs more (the
-temperature sensors) only then. Params: `card`, one of `cpu`, `memory`, `network`, `disk`, or `null`
-for none. Answers `{ "card" }`. The sensors are in the samples that follow, within an interval.
+temperature sensors) only then. Params: `card`, one of `cpu`, `memory`, `network`, `disk`, `gpu`, or
+`null` for none. Answers `{ "card" }`. The sensors are in the samples that follow, within an interval.
 
 ### `view`
 
@@ -158,11 +160,13 @@ told the newest that fit.
 { "kind": "history", "interval": 1.0,
   "at": [1761868800], "cpu": [24.1], "cores": [[20, 31, 18]],
   "mem": [58.6], "swap": [20.1], "rx": [216800], "tx": [75700],
-  "read": [2300000], "write": [757000] }
+  "read": [2300000], "write": [757000], "gpu": [44.0], "gpus": [[44]] }
 ```
 
 `cpu`, `mem` and `swap` are shares (`swap` is 0 where there is none), `cores` each logical
-processor's share in whole percent, `rx`/`tx`/`read`/`write` bytes a second.
+processor's share in whole percent, `rx`/`tx`/`read`/`write` bytes a second. `gpu` is the busiest
+GPU's share (0 where there is none) and `gpus` each GPU's, in whole percent, in the order of the
+samples' `gpus` (empty lists where there is none).
 
 Each value after it is one **sample**:
 
@@ -180,11 +184,13 @@ Each value after it is one **sample**:
             "volumes": [{ "name": "/dev/disk3s5", "mount": "/System/Volumes/Data", "fs": "apfs",
                          "total": 530000000000, "used": 323000000000, "percent": 61.0 }] },
   "load": [1.19, 0.96, 0.8], "uptime": 259200,
-  "sensors": [{ "name": "CPU performance cores", "celsius": 61.5 }] }
+  "sensors": [{ "name": "CPU performance cores", "celsius": 61.5 }],
+  "gpus": [{ "name": "Apple M1 Pro", "load": 44.0, "memoryUsed": 380436480, "memoryTotal": null,
+             "celsius": null, "engines": [{ "name": "Renderer", "load": 43.0 }] }] }
 ```
 
 - `mem.pressure` is `null` where the system does not say; `disk.read`/`write`/`devices` are zero and
-  empty where `features.diskIo` is false.
+  empty where `features.diskIo` is false (it is on macOS, from the storage drivers, and on Linux).
 - `net` counts the interfaces that carry traffic of their own (no loopback, no container pairs or
   tunnels); `interfaces` are those that carried something, busiest first, at most 12.
 - `disk.volumes` counts a device once however many mount points it has (BTRFS subvolumes, APFS
@@ -194,6 +200,12 @@ Each value after it is one **sample**:
   does not say; `wired` and `compressed` are 0 where there is no such thing, as on Linux).
 - `sensors` are the temperatures, degrees Celsius, while a card's details are open (`card`); empty
   otherwise, and where the system tells none.
+- `gpus` are the graphics processors that say how busy they are, at most 12; **empty where
+  `features.gpu` is false.** `load` is 0–100. `memoryUsed` and `memoryTotal` are bytes, `null` where the
+  system does not say: `memoryTotal` is also `null` for a GPU that uses the machine's memory (Apple
+  Silicon). `celsius` is `null` where the system tells none (with one GPU it may come from the sensors,
+  while the card's details are open). `engines` are the parts of the GPU that are busy on their own
+  (Apple's renderer and tiler, NVIDIA's memory bus), possibly none.
 
 ### `processes`
 

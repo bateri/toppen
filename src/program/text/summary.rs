@@ -1,5 +1,5 @@
 //! The summary of the machine: what `top` prints once, with the one thing a monitor can say in
-//! words: CPU, memory, network and disk. `--once` and the fallback print it as text, `--json` as
+//! words: CPU, memory, network, disk and GPU. `--once` and the fallback print it as text, `--json` as
 //! JSON; both are made from the same [`Summary`].
 
 use std::fmt::Write as _;
@@ -21,7 +21,21 @@ pub struct Summary {
     pub memory: MemorySummary,
     pub network: NetworkSummary,
     pub disk: DiskSummary,
+    /// The graphics processors that say how busy they are; none, and no member.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub gpus: Vec<GpuSummary>,
     pub processes: ProcessesSummary,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GpuSummary {
+    pub name: String,
+    pub percent: f64,
+    #[serde(rename = "memoryUsedBytes")]
+    pub memory_used: Option<u64>,
+    /// Null where the GPU uses the machine's memory.
+    #[serde(rename = "memoryTotalBytes")]
+    pub memory_total: Option<u64>,
 }
 
 /// How many processes there are, and the busiest few.
@@ -142,6 +156,16 @@ impl Summary {
                     percent: tenth(percent(volume.used, volume.total)),
                 }),
             },
+            gpus: sample
+                .gpus
+                .iter()
+                .map(|gpu| GpuSummary {
+                    name: gpu.name.clone(),
+                    percent: tenth(gpu.load),
+                    memory_used: gpu.memory_used,
+                    memory_total: gpu.memory_total,
+                })
+                .collect(),
             processes: top_processes(sample),
         }
     }
@@ -224,6 +248,19 @@ impl Summary {
                     volume.percent
                 ),
             );
+        }
+        for (index, gpu) in self.gpus.iter().enumerate() {
+            let mut words = format!("{:>5.1}%   {}", gpu.percent, clip(&gpu.name, 40));
+            match (gpu.memory_used, gpu.memory_total) {
+                (Some(used), Some(total)) => {
+                    let _ = write!(words, " · {} of {}", bytes(used), bytes(total));
+                }
+                (Some(used), None) => {
+                    let _ = write!(words, " · {} in use", bytes(used));
+                }
+                _ => {}
+            }
+            line(if index == 0 { "GPU" } else { "" }, words);
         }
         if !self.processes.top.is_empty() {
             out.push('\n');
@@ -378,7 +415,7 @@ mod tests {
             lines[0].starts_with("toppen on lantern · Fixture OS 1.0 · up 3d"),
             "{text}"
         );
-        for card in ["CPU ", "Memory ", "Network ", "Disk "] {
+        for card in ["CPU ", "Memory ", "Network ", "Disk ", "GPU "] {
             assert!(
                 lines.iter().any(|line| line.starts_with(card)),
                 "{card}: {text}"
@@ -414,6 +451,31 @@ mod tests {
         assert!(top[0]["cpuPercent"].as_f64() >= top[1]["cpuPercent"].as_f64());
         assert!(top[0]["memoryBytes"].as_u64().unwrap() > 0);
         assert!(top[0]["name"].is_string());
+    }
+
+    #[test]
+    fn the_gpus_are_a_line_each_and_a_machine_without_one_has_no_member() {
+        let text = summary().text(None);
+        assert!(text.contains("Fixture M1 Pro GPU"), "{text}");
+        assert!(text.contains(" in use"), "{text}");
+        let json: serde_json::Value = serde_json::from_str(&summary().json()).unwrap();
+        assert!(json["gpus"][0]["memoryTotalBytes"].is_null());
+
+        let mut duo = Fixture::duo();
+        let machine = duo.machine();
+        let text = Summary::of(&machine, &duo.sample()).text(None);
+        assert!(
+            text.contains("Fixture RTX 4090") && text.contains("Fixture RTX 4070"),
+            "{text}"
+        );
+        assert!(text.contains(" of 24.0 GiB"), "{text}");
+
+        let mut large = Fixture::large();
+        let machine = large.machine();
+        let bare = Summary::of(&machine, &large.sample());
+        assert!(!bare.text(None).contains("GPU"));
+        let json: serde_json::Value = serde_json::from_str(&bare.json()).unwrap();
+        assert!(json.get("gpus").is_none());
     }
 
     #[test]

@@ -45,13 +45,16 @@ local list = {
 	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = "m", when = idle },
 	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = "o", when = idle },
 }
-for index, card in { "cpu", "memory", "network", "disk" } do
+for index, card in machine.CARDS do
 	list[#list + 1] = {
 		id = "card_" .. card,
 		title = "Show the details of " .. machine.TITLES[card],
 		group = "Cards",
 		keys = tostring(index),
-		when = idle,
+		-- The GPU's card is there only where the machine has a GPU.
+		when = function()
+			return idle() and (card ~= "gpu" or (S.boot ~= nil and S.boot.features.gpu))
+		end,
 	}
 end
 list[#list + 1] = { id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = "w", when = idle }

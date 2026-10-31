@@ -30,3 +30,7 @@
   the address and the process that holds it, filtered by port, name or user; a signal, a new priority
   or a shell for the row's process; Enter shows it in the table. `port:3000` in the process filter
   leaves the processes that listen there, and a process's details list its ports.
+- The GPU: a card (where the machine has a GPU that says how busy it is) and its details: the use
+  of each GPU over time, its memory, the parts of it that are busy and its temperature. Apple's
+  accelerators, the DRM drivers of Linux and NVIDIA's driver are read; the disk's reads and writes
+  are read on a Mac as well (the storage drivers), and the summary lists the GPUs.

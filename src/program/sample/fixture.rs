@@ -6,6 +6,7 @@
 //! Debug builds only: a release has no fixture, and `TOPPEN_FIXTURE` means nothing to it.
 
 use super::control::{Control, Detail, Key, Person, Refused, Signal};
+use super::gpu::{Engine, Gpu, celsius_of};
 use super::ports::{Listener, PortSource, Ports, Proto};
 use super::{
     Breakdown, Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample,
@@ -30,7 +31,17 @@ struct Shape {
     busy: f64,
     pressure: bool,
     disk_io: bool,
+    /// The graphics processors: none, one that shares the machine's memory (Apple Silicon), or
+    /// cards with memory of their own.
+    gpus: Gpus,
     processes: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Gpus {
+    None,
+    Unified(&'static str),
+    Cards(&'static [&'static str]),
 }
 
 const SMALL: Shape = Shape {
@@ -43,7 +54,23 @@ const SMALL: Shape = Shape {
     busy: 28.0,
     pressure: true,
     disk_io: true,
+    gpus: Gpus::Unified("Fixture M1 Pro GPU"),
     processes: 60,
+};
+
+/// A machine with two cards of their own, for the pages that list more than one GPU.
+const DUO: Shape = Shape {
+    name: "duo",
+    host: "anvil",
+    cpu: "Fixture Ryzen 9",
+    threads: 16,
+    memory: 64 * GIB,
+    swap: 8 * GIB,
+    busy: 35.0,
+    pressure: false,
+    disk_io: true,
+    gpus: Gpus::Cards(&["Fixture RTX 4090", "Fixture RTX 4070"]),
+    processes: 120,
 };
 
 const LARGE: Shape = Shape {
@@ -56,6 +83,7 @@ const LARGE: Shape = Shape {
     busy: 55.0,
     pressure: false,
     disk_io: true,
+    gpus: Gpus::None,
     processes: 2000,
 };
 
@@ -320,10 +348,10 @@ impl Fixture {
         }
     }
 
-    /// The fixture called `name` ("small", "large"), if there is one.
+    /// The fixture called `name` ("small", "large", "duo"), if there is one.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
-        [SMALL, LARGE]
+        [SMALL, LARGE, DUO]
             .into_iter()
             .find(|shape| shape.name == name)
             .map(Self::of)
@@ -337,6 +365,11 @@ impl Fixture {
     #[cfg(test)]
     pub fn large() -> Self {
         Self::of(LARGE)
+    }
+
+    #[cfg(test)]
+    pub fn duo() -> Self {
+        Self::of(DUO)
     }
 
     fn of(shape: Shape) -> Self {
@@ -395,6 +428,7 @@ impl Source for Fixture {
             features: Features {
                 pressure: self.shape.pressure,
                 disk_io: self.shape.disk_io,
+                gpu: !matches!(self.shape.gpus, Gpus::None),
             },
         }
     }
@@ -511,6 +545,34 @@ impl Source for Fixture {
             volumes,
         };
 
+        let sensors = if self.detail {
+            let heat = 54.0 + 14.0 * swell + 2.0 * noise(tick + 3);
+            vec![
+                Sensor {
+                    name: "CPU performance cores".to_owned(),
+                    celsius: heat,
+                },
+                Sensor {
+                    name: "CPU efficiency cores".to_owned(),
+                    celsius: heat - 9.0,
+                },
+                Sensor {
+                    name: "GPU".to_owned(),
+                    celsius: 41.0 + 3.0 * noise(tick + 8),
+                },
+                Sensor {
+                    name: "SSD".to_owned(),
+                    celsius: 36.0 + 2.0 * wave(tick, 300, 4),
+                },
+            ]
+        } else {
+            Vec::new()
+        };
+        let mut gpus = Self::gpus(shape.gpus, tick);
+        // As the real source does: one GPU is the machine's, and the sensors may name it.
+        if let [only] = gpus.as_mut_slice() {
+            only.celsius = only.celsius.or_else(|| celsius_of(&sensors));
+        }
         let processes = self.processes(tick);
         Sample {
             at: START + tick as f64,
@@ -525,34 +587,66 @@ impl Source for Fixture {
             ],
             uptime: 3 * 86_400 + tick,
             processes,
-            sensors: if self.detail {
-                let heat = 54.0 + 14.0 * swell + 2.0 * noise(tick + 3);
-                vec![
-                    Sensor {
-                        name: "CPU performance cores".to_owned(),
-                        celsius: heat,
-                    },
-                    Sensor {
-                        name: "CPU efficiency cores".to_owned(),
-                        celsius: heat - 9.0,
-                    },
-                    Sensor {
-                        name: "GPU".to_owned(),
-                        celsius: 41.0 + 3.0 * noise(tick + 8),
-                    },
-                    Sensor {
-                        name: "SSD".to_owned(),
-                        celsius: 36.0 + 2.0 * wave(tick, 300, 4),
-                    },
-                ]
-            } else {
-                Vec::new()
-            },
+            sensors,
+            gpus,
         }
     }
 }
 
 impl Fixture {
+    /// The graphics processors at `tick`.
+    #[allow(clippy::cast_precision_loss)]
+    fn gpus(kind: Gpus, tick: u64) -> Vec<Gpu> {
+        match kind {
+            Gpus::None => Vec::new(),
+            Gpus::Unified(name) => {
+                let load = 8.0 + 70.0 * wave(tick, 75, 10) + 6.0 * noise(tick + 11);
+                vec![Gpu {
+                    name: name.to_owned(),
+                    load,
+                    memory_used: Some(380_000_000 + (1.5 * GIB as f64 * wave(tick, 110, 3)) as u64),
+                    memory_total: None,
+                    celsius: None,
+                    engines: vec![
+                        Engine {
+                            name: "Renderer".to_owned(),
+                            load: (load - 1.0).max(0.0),
+                        },
+                        Engine {
+                            name: "Tiler".to_owned(),
+                            load: (load * 0.8 - 2.0).max(0.0),
+                        },
+                    ],
+                }]
+            }
+            Gpus::Cards(names) => names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    let phase = 17 * index as u64;
+                    let load = (12.0
+                        + 80.0 * wave(tick, 60 + 20 * index as u64, phase)
+                        + 8.0 * noise(tick + phase))
+                    .clamp(0.0, 100.0);
+                    let total = if index == 0 { 24 } else { 12 } * GIB;
+                    Gpu {
+                        name: (*name).to_owned(),
+                        load,
+                        memory_used: Some(
+                            (total as f64 * (0.2 + 0.5 * wave(tick, 130, phase))) as u64,
+                        ),
+                        memory_total: Some(total),
+                        celsius: Some(45.0 + 0.3 * load + 2.0 * noise(tick + 5 + phase)),
+                        engines: vec![Engine {
+                            name: "Memory bus".to_owned(),
+                            load: (load * 0.6).clamp(0.0, 100.0),
+                        }],
+                    }
+                })
+                .collect(),
+        }
+    }
+
     /// The processes at `tick`: what each does changes with time, and the churning ones come and go.
     #[allow(clippy::cast_precision_loss)]
     fn processes(&self, tick: u64) -> Vec<Process> {
@@ -661,9 +755,30 @@ mod tests {
     }
 
     #[test]
+    fn the_fixtures_have_one_gpu_two_or_none_and_say_so_in_their_features() {
+        for (mut fixture, count) in [
+            (Fixture::small(), 1),
+            (Fixture::duo(), 2),
+            (Fixture::large(), 0),
+        ] {
+            let sample = fixture.sample();
+            assert_eq!(sample.gpus.len(), count);
+            assert_eq!(fixture.machine().features.gpu, count > 0);
+            for gpu in &sample.gpus {
+                assert!((0.0..=100.0).contains(&gpu.load), "{gpu:?}");
+                assert!(gpu.memory_used.is_some());
+            }
+        }
+        // The Apple-style one shares the machine's memory; the cards have their own.
+        assert_eq!(Fixture::small().sample().gpus[0].memory_total, None);
+        assert!(Fixture::duo().sample().gpus[0].memory_total.is_some());
+    }
+
+    #[test]
     fn a_fixture_is_found_by_its_name() {
         assert!(Fixture::named("small").is_some());
         assert!(Fixture::named("large").is_some());
+        assert!(Fixture::named("duo").is_some());
         assert!(Fixture::named("nothing").is_none());
     }
 }

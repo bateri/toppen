@@ -1,4 +1,4 @@
--- The four cards of the overview: CPU, memory, network and disk. A card is a title, the value of
+-- The cards of the overview: CPU, memory, network and disk, and the GPU where the machine has one. A card is a title, the value of
 -- this moment, the last minute as a graph, and a line or two of what the value is made of. In a
 -- short card the title and the value share a line and the graph is what is left.
 
@@ -43,10 +43,11 @@ end
 local FIRST = "green"
 local SECOND = "magenta"
 
--- An arrow and a rate: the direction a network or a disk moves bytes in.
-local function flow(arrow, role, per_second, size)
+-- An arrow and a rate: the direction a network or a disk moves bytes in. `tight` is a card too
+-- narrow for both rates at the size of a compact card's head.
+local function flow(arrow, role, per_second, size, tight)
 	if size < 22 then
-		size = 14
+		size = tight and 12 or 14
 	end
 	return b.div():row():items_center():gap(3):no_shrink()
 		:child(kit.icon(arrow, size - 6, role))
@@ -67,7 +68,7 @@ local function card(spec, w, h)
 	local used = 2 * PAD
 	local head = b.div():row():items_center():gap(8):h(HEAD):no_shrink()
 		:child(b.text(spec.title):weight(600):color("foreground"):no_shrink())
-	if spec.side and w >= 220 then
+	if spec.side and w >= 200 then
 		head:child(b.div():grow(1):min_w(0):child(quiet(spec.side)))
 	else
 		head:child(b.spacer())
@@ -77,7 +78,7 @@ local function card(spec, w, h)
 		box:child(b.div():row():items_center():h(BIG):no_shrink():child(spec.big(26)))
 		used += HEAD + BIG + 2 * GAP
 	else
-		head:child(spec.big(18))
+		head:child(spec.big(18, w < 270))
 		box:child(head)
 		lines = { spec.compact or spec.lines[1] }
 		used += HEAD + GAP
@@ -197,10 +198,10 @@ local function network_card()
 		key = "network",
 		title = "Network",
 		compact = compact,
-		big = function(size)
+		big = function(size, tight)
 			local row = b.div():row():items_center():gap(10):no_shrink()
-			row:child(flow("arrow-down", FIRST, net and net.rx or 0, size))
-			row:child(flow("arrow-up", SECOND, net and net.tx or 0, size))
+			row:child(flow("arrow-down", FIRST, net and net.rx or 0, size, tight))
+			row:child(flow("arrow-up", SECOND, net and net.tx or 0, size, tight))
 			return row
 		end,
 		graph = function(w, h)
@@ -230,10 +231,10 @@ local function disk_card()
 		spec.compact = dim(string.format("%s of %s · %s", format.bytes(volume.used), format.bytes(volume.total), format.percent(volume.total > 0 and volume.used / volume.total * 100 or 0)))
 	end
 	if io then
-		spec.big = function(size)
+		spec.big = function(size, tight)
 			local row = b.div():row():items_center():gap(10):no_shrink()
-			row:child(flow("arrow-down", FIRST, disk and disk.read or 0, size))
-			row:child(flow("arrow-up", SECOND, disk and disk.write or 0, size))
+			row:child(flow("arrow-down", FIRST, disk and disk.read or 0, size, tight))
+			row:child(flow("arrow-up", SECOND, disk and disk.write or 0, size, tight))
 			return row
 		end
 		spec.graph = function(w, h)
@@ -268,12 +269,57 @@ local function disk_card()
 	return spec
 end
 
+-- The GPU card: the busiest GPU's load, and what it is made of. With several GPUs the card speaks
+-- of the busiest and says how many there are.
+local function gpu_card()
+	local sample = S.sample
+	local gpus = sample and sample.gpus or {}
+	local first, busiest = gpus[1], gpus[1]
+	for _, one in gpus do
+		if one.load > busiest.load then
+			busiest = one
+		end
+	end
+	local load = busiest and busiest.load or 0
+	local role = format.load_role(load)
+	local lines = {}
+	if busiest then
+		local memory = nil
+		if busiest.memoryUsed ~= nil and busiest.memoryTotal ~= nil then
+			memory = string.format("%s of %s", format.bytes(busiest.memoryUsed), format.bytes(busiest.memoryTotal))
+		elseif busiest.memoryUsed ~= nil then
+			memory = string.format("%s in use", format.bytes(busiest.memoryUsed))
+		end
+		if #gpus > 1 then
+			lines[#lines + 1] = dim(string.format("%d GPUs", #gpus))
+			lines[#lines + 1] = quiet(memory or busiest.name)
+		else
+			lines[#lines + 1] = dim(memory or busiest.name)
+			if busiest.celsius ~= nil then
+				lines[#lines + 1] = quiet(string.format("%.0f °C", busiest.celsius))
+			end
+		end
+	end
+	return {
+		key = "gpu",
+		title = "GPU",
+		side = first and #gpus == 1 and first.name or nil,
+		big = function(size)
+			return value_text(format.percent(load), role, size)
+		end,
+		graph = function(w, h)
+			return graph.area({ { values = S.series.gpu, role = role } }, cards.window(), 100, w, h)
+		end,
+		lines = lines,
+	}
+end
+
 -- --- The gauges -------------------------------------------------------------------------------------------
 
 local GAUGE = 20
 local NAME_W = 64
 
--- The four cards as four lines, for a pane too narrow for a graph each: a name, a meter and the
+-- The cards as a line each, for a pane too narrow for a graph each: a name, a meter and the
 -- value of this moment, in `w` points. Network has no meter: its rates are not a share of anything.
 function cards.gauges(w)
 	local sample = S.sample
@@ -304,17 +350,35 @@ function cards.gauges(w)
 		local share = volume.total > 0 and volume.used / volume.total * 100 or 0
 		line("Disk", share, string.format("%s  %s", format.percent(share), volume.mount), "disk")
 	end
+	local busiest = nil
+	for _, one in sample.gpus do
+		if busiest == nil or one.load > busiest.load then
+			busiest = one
+		end
+	end
+	if busiest then
+		line("GPU", busiest.load, string.format("%s  %s", format.percent(busiest.load), #sample.gpus > 1 and string.format("%d GPUs", #sample.gpus) or ""), "gpu")
+	end
 	return box
 end
 
--- The four cards at `w` by `h` points each, in the order of the overview.
+-- How many cards the overview has: four, and the GPU's where the machine has one.
+function cards.count()
+	return S.boot and S.boot.features.gpu and 5 or 4
+end
+
+-- The cards at `w` by `h` points each, in the order of the overview.
 function cards.list(w, h)
-	return {
+	local list = {
 		card(cpu_card(), w, h),
 		card(memory_card(), w, h),
 		card(network_card(), w, h),
 		card(disk_card(), w, h),
 	}
+	if cards.count() == 5 then
+		list[#list + 1] = card(gpu_card(), w, h)
+	end
+	return list
 end
 
 return cards

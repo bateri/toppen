@@ -31,6 +31,7 @@ struct MachineInfo {
 struct Features {
     pressure: bool,
     disk_io: bool,
+    gpu: bool,
 }
 
 #[derive(Serialize)]
@@ -100,6 +101,7 @@ fn boot(session: &Session, _: NoParams) -> Result<Boot, Failure> {
         features: Features {
             pressure: machine.features.pressure,
             disk_io: machine.features.disk_io,
+            gpu: machine.features.gpu,
         },
         sampling: sampling_of(session),
     })
@@ -128,7 +130,7 @@ fn sampling(session: &Session, params: SamplingParams) -> Result<Sampling, Failu
 }
 
 /// The cards of the overview, which have details.
-const CARDS: [&str; 4] = ["cpu", "memory", "network", "disk"];
+const CARDS: [&str; 5] = ["cpu", "memory", "network", "disk", "gpu"];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -6,7 +6,9 @@
 //! This is `sample/`: it knows nothing of the page. It takes and gives plain Rust values.
 
 pub mod control;
+pub mod gpu;
 pub mod history;
+pub mod iokit;
 pub mod linux;
 pub mod macos;
 pub mod ports;
@@ -43,6 +45,8 @@ pub struct Features {
     pub pressure: bool,
     /// Disk reads and writes in bytes a second.
     pub disk_io: bool,
+    /// At least one graphics processor that says how busy it is: no GPU card is drawn without.
+    pub gpu: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -187,6 +191,8 @@ pub struct Sample {
     pub processes: Vec<Process>,
     /// The temperatures, while a card's details are open (`Source::detail`); none otherwise.
     pub sensors: Vec<Sensor>,
+    /// The graphics processors, as many as the machine has that say how busy they are.
+    pub gpus: Vec<gpu::Gpu>,
 }
 
 /// Where measurements come from.

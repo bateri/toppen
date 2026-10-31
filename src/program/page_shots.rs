@@ -109,6 +109,24 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "card-disk.png");
+    page.press("5")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("GPU use"))?;
+    std::thread::sleep(Duration::from_secs(2));
+    page.advance(1.0)?;
+    page.hover("graph/gpu/1")?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "card-gpu.png");
+
+    // A machine with two cards of its own, and one with no GPU at all (the overview keeps its four).
+    let session = session_over(Fixture::duo(), Duration::from_secs(1));
+    let mut page = open(&session, BIG, Some(&fonts))?;
+    page.press("5")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Fixture RTX 4070")
+    })?;
+    std::thread::sleep(Duration::from_secs(2));
+    page.advance(1.0)?;
+    save(&page, &fonts, Palette::Light, "card-gpu-two.png");
 
     // The ports.
     let session = session_over(Fixture::small(), Duration::from_secs(1));

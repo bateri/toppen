@@ -2,7 +2,7 @@
 
 A system monitor for the terminal pane, in the way of `top` and `btop`: what the machine is doing,
 as cards with graphs and a table of its processes, drawn by the terminal in its own font and colours. It runs on the machine it is
-started on, so over plain `ssh` it shows the server's own CPU, memory, network and disks.
+started on, so over plain `ssh` it shows the server's own CPU, memory, network, disks and GPU.
 
 toppen is a [pencere](https://github.com/bateri/pencere) app: the program is Rust, the view is a
 page of pencere's kit, and both are one file. A terminal that hosts pencere (bateri) shows the view
@@ -46,12 +46,19 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   has these and more. A process of another user is shown, and left alone unless toppen runs as root.
   A signal names the process by its id and the second it started in: if it ended meanwhile and its
   id was used again, nothing is sent.
-- Press a card (or **1** CPU, **2** memory, **3** network, **4** disk) for its details in place of the
+- Press a card (or **1** CPU, **2** memory, **3** network, **4** disk, **5** GPU) for its details in place of the
   table; **Esc** goes back. CPU: every processor with its own graph, frequencies and temperatures;
   memory: what it is made of (app, wired, compressed, cached files, free) and swap; network: each
-  interface with its own graph (the arrows choose); disk: every volume and the reads and writes. Rest
+  interface with its own graph (the arrows choose); disk: every volume and the reads and writes; GPU:
+  each one's use over time, its memory, its engines and its temperature. Rest
   the pointer on a graph to read what it held and how long ago; **w** (or the buttons) changes how far
   back the graphs look: 1, 5 or 15 minutes.
+- The GPU card is there only where the machine has a GPU that says how busy it is: an Apple
+  Silicon or Intel Mac's accelerators, the AMD (and other) cards the Linux kernel keeps files for
+  (`/sys/class/drm`), and NVIDIA's through its driver's library (`libnvidia-ml`) where that is
+  installed. A machine with none has four cards, and no key for a fifth. With several GPUs the card
+  speaks of the busiest and says how many there are; the details list each. The disk's reads and
+  writes come from the storage drivers on a Mac and from `/proc/diskstats` on Linux.
 - **p** (or the switch beside the filter) shows the listening ports instead of the table: each socket
   that waits for connections (TCP) or is bound to a port (UDP), the address it is on and the process
   that holds it. Filter by `:3000`, a name or a user; **Enter** shows the process in the table with its
