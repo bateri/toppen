@@ -62,6 +62,16 @@ function format.duration(seconds)
 	return string.format("%ds", seconds)
 end
 
+-- Processor time as `top` writes it: "3:07.25" below an hour, "12:03:07" from it on.
+function format.cpu_time(seconds)
+	seconds = math.max(seconds or 0, 0)
+	local whole = math.floor(seconds)
+	if whole >= 3600 then
+		return string.format("%d:%02d:%02d", whole // 3600, (whole % 3600) // 60, whole % 60)
+	end
+	return string.format("%d:%02d.%02d", whole // 60, whole % 60, math.floor((seconds - whole) * 100))
+end
+
 -- How long a stretch of a graph is: "60 s", "2 min", "2 min 30 s".
 function format.span(seconds)
 	seconds = math.floor(seconds + 0.5)

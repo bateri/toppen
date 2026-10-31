@@ -19,6 +19,8 @@ struct State {
     recent: VecDeque<(u64, Arc<Sample>)>,
     /// How many samples have been taken: the number of the latest.
     seq: u64,
+    /// How many times a watcher asked to be told again (a view of the table changed).
+    touches: u64,
     watchers: usize,
     interval: Duration,
     paused: bool,
@@ -85,6 +87,7 @@ impl Sampler {
                 history,
                 recent: VecDeque::new(),
                 seq: 0,
+                touches: 0,
                 watchers: 0,
                 interval,
                 paused: false,
@@ -135,6 +138,13 @@ impl Sampler {
         self.shared.notify();
     }
 
+    /// Asks the watchers of the latest sample to be told it again, as something other than the
+    /// machine changed what they say about it.
+    pub fn touch(&self) {
+        self.shared.lock().touches += 1;
+        self.shared.notify();
+    }
+
     /// Starts to watch: the thread looks at the machine while a watch is held.
     #[must_use]
     pub fn watch(&self) -> Watch {
@@ -143,6 +153,7 @@ impl Sampler {
         Watch {
             shared: Arc::clone(&self.shared),
             seen: 0,
+            touched: 0,
         }
     }
 }
@@ -151,6 +162,7 @@ impl Sampler {
 pub struct Watch {
     shared: Arc<Shared>,
     seen: u64,
+    touched: u64,
 }
 
 impl Watch {
@@ -178,6 +190,27 @@ impl Watch {
                     .collect();
                 self.seen = state.seq;
                 return Some(news);
+            }
+            state = self.shared.wait(state);
+        }
+    }
+
+    /// Waits for a sample newer than the one seen, or for a touch, and gives the latest sample; the
+    /// ones between are skipped. `None` once `ended` says so. Where nothing was sampled yet it waits
+    /// on, touched or not.
+    pub fn latest(&mut self, ended: &dyn Fn() -> bool) -> Option<Arc<Sample>> {
+        let mut state = self.shared.lock();
+        loop {
+            if ended() || state.closed {
+                return None;
+            }
+            if state.seq > self.seen || state.touches > self.touched {
+                if let Some((number, sample)) = state.recent.back() {
+                    let found = Arc::clone(sample);
+                    self.seen = *number;
+                    self.touched = state.touches;
+                    return Some(found);
+                }
             }
             state = self.shared.wait(state);
         }
@@ -309,6 +342,22 @@ mod tests {
         ended.store(true, std::sync::atomic::Ordering::SeqCst);
         sampler.wake();
         assert!(waiting.join().unwrap().is_none());
+    }
+
+    #[test]
+    fn the_latest_sample_is_given_again_when_touched_even_while_paused() {
+        let sampler = started();
+        let mut watch = sampler.watch();
+        let first = watch.latest(&never).unwrap();
+        sampler.set_paused(true);
+        thread::sleep(TICK * 4);
+        sampler.touch();
+        let again = watch.latest(&never).unwrap();
+        assert!(again.at >= first.at);
+        assert!(!again.processes.is_empty());
+        // Paused, nothing new comes: a touch gives the same sample.
+        sampler.touch();
+        assert_eq!(watch.latest(&never).unwrap().at, again.at);
     }
 
     #[test]

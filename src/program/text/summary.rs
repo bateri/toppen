@@ -21,7 +21,31 @@ pub struct Summary {
     pub memory: MemorySummary,
     pub network: NetworkSummary,
     pub disk: DiskSummary,
+    pub processes: ProcessesSummary,
 }
+
+/// How many processes there are, and the busiest few.
+#[derive(Debug, Serialize)]
+pub struct ProcessesSummary {
+    pub count: usize,
+    /// The busiest by processor, then by memory.
+    pub top: Vec<TopProcess>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TopProcess {
+    pub pid: u32,
+    pub name: String,
+    pub user: String,
+    /// Percent of one processor.
+    #[serde(rename = "cpuPercent")]
+    pub cpu: f64,
+    #[serde(rename = "memoryBytes")]
+    pub memory: u64,
+}
+
+/// How many processes the summary lists.
+const TOP: usize = 5;
 
 #[derive(Debug, Serialize)]
 pub struct CpuSummary {
@@ -118,6 +142,7 @@ impl Summary {
                     percent: tenth(percent(volume.used, volume.total)),
                 }),
             },
+            processes: top_processes(sample),
         }
     }
 
@@ -200,12 +225,65 @@ impl Summary {
                 ),
             );
         }
+        if !self.processes.top.is_empty() {
+            out.push('\n');
+            let _ = writeln!(
+                out,
+                "{} processes, the busiest:\n{:>7} {:<10} {:>6} {:>10}  NAME",
+                self.processes.count, "PID", "USER", "CPU", "MEMORY"
+            );
+            for process in &self.processes.top {
+                let _ = writeln!(
+                    out,
+                    "{:>7} {:<10} {:>5.1}% {:>10}  {}",
+                    process.pid,
+                    clip(&process.user, 10),
+                    process.cpu,
+                    bytes(process.memory),
+                    clip(&process.name, 40)
+                );
+            }
+        }
         if let Some(note) = note {
             out.push('\n');
             out.push_str(note);
             out.push('\n');
         }
         out
+    }
+}
+
+/// `text` cut to `width` characters, with an ellipsis where it was cut.
+fn clip(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        return text.to_owned();
+    }
+    let mut out: String = text.chars().take(width.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
+fn top_processes(sample: &Sample) -> ProcessesSummary {
+    let mut busiest: Vec<&crate::sample::Process> = sample.processes.iter().collect();
+    busiest.sort_by(|a, b| {
+        b.cpu
+            .total_cmp(&a.cpu)
+            .then(b.memory.cmp(&a.memory))
+            .then(a.pid.cmp(&b.pid))
+    });
+    ProcessesSummary {
+        count: sample.processes.len(),
+        top: busiest
+            .into_iter()
+            .take(TOP)
+            .map(|process| TopProcess {
+                pid: process.pid,
+                name: process.name.clone(),
+                user: process.user.clone(),
+                cpu: tenth(process.cpu),
+                memory: process.memory,
+            })
+            .collect(),
     }
 }
 
@@ -307,6 +385,11 @@ mod tests {
             );
         }
         assert!(text.contains("swap "), "{text}");
+        assert!(text.contains(" processes, the busiest:"), "{text}");
+        assert!(
+            lines.iter().any(|line| line.trim_end().ends_with("NAME")),
+            "{text}"
+        );
         assert_eq!(lines.last(), Some(&"This terminal shows no views."));
         assert!(
             lines.iter().all(|line| line.chars().count() <= 80),
@@ -325,6 +408,18 @@ mod tests {
         assert!(value["memory"]["total"].as_u64().unwrap() > 0);
         assert!(value["disk"]["readBytesPerSecond"].is_number());
         assert_eq!(value["disk"]["volume"]["mount"], "/System/Volumes/Data");
+        let top = value["processes"]["top"].as_array().unwrap();
+        assert_eq!(top.len(), TOP);
+        assert!(value["processes"]["count"].as_u64().unwrap() >= TOP as u64);
+        assert!(top[0]["cpuPercent"].as_f64() >= top[1]["cpuPercent"].as_f64());
+        assert!(top[0]["memoryBytes"].as_u64().unwrap() > 0);
+        assert!(top[0]["name"].is_string());
+    }
+
+    #[test]
+    fn a_name_that_is_too_long_is_cut_with_an_ellipsis() {
+        assert_eq!(clip("short", 10), "short");
+        assert_eq!(clip("Google Chrome Helper (Renderer)", 12), "Google Chro…");
     }
 
     #[test]

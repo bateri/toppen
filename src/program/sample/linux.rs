@@ -108,6 +108,34 @@ pub fn read_pressure() -> Option<f64> {
     parse_pressure(&std::fs::read_to_string("/proc/pressure/memory").ok()?)
 }
 
+/// What `/proc/<pid>/stat` says that sysinfo does not: the state letter, the nice value and the
+/// number of threads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stat {
+    pub state: char,
+    pub nice: i32,
+    pub threads: u32,
+}
+
+/// The `stat` text of a process. The name is in parentheses and may hold spaces and parentheses
+/// itself, so the fields are counted from the last closing one.
+pub fn parse_stat(text: &str) -> Option<Stat> {
+    let after = &text[text.rfind(')')? + 1..];
+    let fields: Vec<&str> = after.split_whitespace().collect();
+    // state ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime stime cutime
+    // cstime priority nice num_threads
+    Some(Stat {
+        state: fields.first()?.chars().next()?,
+        nice: fields.get(16)?.parse().ok()?,
+        threads: fields.get(17)?.parse().ok()?,
+    })
+}
+
+/// The `stat` of the process `pid`, where it is still there.
+pub fn read_stat(pid: u32) -> Option<Stat> {
+    parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,6 +196,21 @@ mod tests {
         let devices = rates(&before, &now, Duration::from_secs(1));
         assert!(devices[0].read.abs() < 1e-9 && devices[0].write.abs() < 1e-9);
         assert!(rates(&before, &now, Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn a_process_stat_is_read_from_the_last_parenthesis() {
+        let text = "4242 (tmux: server (1)) S 1 4242 4242 0 -1 4194560 3000 0 0 0 31 12 0 0 20 -5 3 0 9100 1 2 3";
+        assert_eq!(
+            parse_stat(text),
+            Some(Stat {
+                state: 'S',
+                nice: -5,
+                threads: 3
+            })
+        );
+        assert_eq!(parse_stat("4242 (short) S 1"), None);
+        assert_eq!(parse_stat(""), None);
     }
 
     #[test]

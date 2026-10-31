@@ -4,17 +4,21 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind,
-    System as Sysinfo,
+    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, ProcessRefreshKind,
+    ProcessStatus, ProcessesToUpdate, RefreshKind, System as Sysinfo, UpdateKind, Users,
 };
 
 use super::{
-    Cpu, Disk, Features, Interface, Machine, Memory, Network, Sample, Source, Volume, linux, macos,
+    Cpu, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Source, Volume,
+    linux, macos,
 };
 
 /// The volumes are listed again each so many samples: they change when a disk is mounted, and their
 /// sizes move slowly.
 const VOLUMES_EVERY: u64 = 5;
+
+/// The users are listed again each so many samples: a person is added now and then.
+const USERS_EVERY: u64 = 30;
 
 /// File systems that are not storage a person has files on.
 const VIRTUAL_FILESYSTEMS: [&str; 24] = [
@@ -114,8 +118,33 @@ pub struct System {
     /// The disks' counters at the last sample (Linux).
     counters: linux::Counters,
     volumes: Vec<Volume>,
+    users: Users,
     ticks: u64,
     features: Features,
+}
+
+/// What a process is asked of the system at each look; its command line and its user are read once.
+fn process_kind() -> ProcessRefreshKind {
+    ProcessRefreshKind::nothing()
+        .with_cpu()
+        .with_memory()
+        .with_disk_usage()
+        .with_user(UpdateKind::OnlyIfNotSet)
+        .with_cmd(UpdateKind::OnlyIfNotSet)
+}
+
+/// The state letter of a process where `/proc` does not say it more exactly.
+fn state_letter(status: ProcessStatus) -> char {
+    match status {
+        ProcessStatus::Run => 'R',
+        ProcessStatus::Sleep => 'S',
+        ProcessStatus::Idle => 'I',
+        ProcessStatus::Stop | ProcessStatus::Tracing => 'T',
+        ProcessStatus::Zombie => 'Z',
+        ProcessStatus::Dead => 'X',
+        ProcessStatus::UninterruptibleDiskSleep => 'D',
+        _ => '?',
+    }
 }
 
 impl System {
@@ -145,11 +174,82 @@ impl System {
             last: Instant::now(),
             counters,
             volumes: Vec::new(),
+            users: Users::new_with_refreshed_list(),
             ticks: 0,
             features,
         };
         system.volumes = volumes_of(&mounts(&system.disks));
+        // The first look at the processes has no usage to say: the next has.
         system
+            .sys
+            .refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
+        system
+    }
+}
+
+impl System {
+    /// The processes now, with what each did since the look before (`seconds` ago).
+    fn processes(&mut self, seconds: f64) -> Vec<Process> {
+        self.sys
+            .refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
+        if self.ticks % USERS_EVERY == 0 {
+            self.users.refresh();
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let per_second = |bytes: u64| {
+            if seconds > 0.0 {
+                bytes as f64 / seconds
+            } else {
+                0.0
+            }
+        };
+        self.sys
+            .processes()
+            .iter()
+            .map(|(pid, process)| {
+                let pid = pid.as_u32();
+                let name = process.name().to_string_lossy().into_owned();
+                let command = process
+                    .cmd()
+                    .iter()
+                    .map(|word| word.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let user = process.user_id().map_or_else(String::new, |uid| {
+                    self.users
+                        .get_user_by_id(uid)
+                        .map_or_else(|| uid.to_string(), |user| user.name().to_owned())
+                });
+                let io = process.disk_usage();
+                let (mut state, mut nice, mut threads) = (state_letter(process.status()), 0, 1);
+                if let Some(stat) = linux::read_stat(pid).filter(|_| cfg!(target_os = "linux")) {
+                    (state, nice, threads) = (stat.state, stat.nice, stat.threads);
+                } else if let Some(task) = macos::task(pid) {
+                    (nice, threads) = (task.nice, task.threads);
+                }
+                Process {
+                    pid,
+                    ppid: process.parent().map_or(0, sysinfo::Pid::as_u32),
+                    start: process.start_time(),
+                    command: if command.is_empty() {
+                        name.clone()
+                    } else {
+                        command
+                    },
+                    name,
+                    user,
+                    cpu: f64::from(process.cpu_usage()).max(0.0),
+                    memory: process.memory(),
+                    virt: process.virtual_memory(),
+                    threads,
+                    state,
+                    nice,
+                    cpu_time: process.accumulated_cpu_time(),
+                    read: per_second(io.read_bytes),
+                    write: per_second(io.written_bytes),
+                }
+            })
+            .collect()
     }
 }
 
@@ -312,6 +412,7 @@ impl Source for System {
             volumes: self.volumes.clone(),
         };
 
+        let processes = self.processes(seconds);
         let load = Sysinfo::load_average();
         Sample {
             at: now(),
@@ -321,6 +422,7 @@ impl Source for System {
             disk,
             load: [load.one, load.five, load.fifteen],
             uptime: Sysinfo::uptime(),
+            processes,
         }
     }
 }
@@ -400,5 +502,13 @@ mod tests {
         assert!((0.0..=100.0).contains(&sample.cpu.total));
         assert!(sample.memory.used <= sample.memory.total);
         assert!(sample.uptime > 0);
+        // This process is one of them, found by the pid it has and as the user it is.
+        let own = sample
+            .processes
+            .iter()
+            .find(|process| process.pid == std::process::id())
+            .expect("this process is listed");
+        assert!(own.memory > 0 && own.threads >= 1 && !own.name.is_empty());
+        assert!(!own.user.is_empty() && own.start > 0, "{own:?}");
     }
 }

@@ -1,5 +1,5 @@
--- The status line: the machine, how long it has been up, how often it is looked at, and the one
--- thing to do about it: pause.
+-- The status line (the library's `u:status`): the machine, how long it has been up, how often it is
+-- looked at, and the one thing to do about it: pause.
 
 local kit = require("../lib/kit")
 local format = require("../lib/format")
@@ -47,77 +47,58 @@ function status.start(sampling)
 	apply(sampling)
 end
 
--- An item of the line that can be pressed: its words, with the pointer's hover under it.
-local function item(id, words, tip, tone)
-	local over = kit.hovered(id)
-	local element = b.div():press(id):row():items_center():gap(4):h(SIZE.status - 6):px(8):rounded(4):no_shrink()
-		:bg(over and b.alpha("foreground", 0.1) or nil)
-		:motion({ seconds = 0.11, color = true })
-		:role("button")
-		:label(tip or words)
-		:child(b.text(words):color(tone or (over and "foreground" or "dim")))
-	if tip then
-		element:tip(tip)
+-- An action of the line: the item that was pressed. Whether it was one of this line's.
+function status.action(action)
+	if action.from ~= "status" or action.kind ~= "press" then
+		return false
 	end
-	return element
-end
-
-function status.press(id)
-	if id == "status-pause" then
+	if action.key == "pause" then
 		act.toggle_pause()
-	elseif id == "status-interval" then
+	elseif action.key == "interval" then
 		-- Round the steps: slower, and from the slowest back to the fastest.
 		if S.interval >= STEPS[#STEPS] - 0.01 then
 			set({ interval = STEPS[1] })
 		else
 			act.step_interval(1)
 		end
-	else
-		return false
 	end
 	return true
 end
 
 function status.view()
 	local machine = S.boot.machine
-	local row = b.div():row():items_center():gap(2):h(SIZE.status):px(6):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
-	local function part(words, tone, shrink)
-		local text = b.text(words):color(tone)
-		if shrink then
-			text:truncate():min_w(0)
-		end
-		local box = b.div():px(4):child(text):min_w(0)
-		if not shrink then
-			box:no_shrink()
-		end
-		return box
-	end
-	local first = true
-	local function add(words, tone, shrink)
-		if not first then
-			row:child(b.text("·"):color("quiet"):no_shrink())
-		end
-		first = false
-		row:child(part(words, tone, shrink))
-	end
-	add(machine.host, "foreground", true)
+	local start = { { key = "host", words = machine.host, priority = 9 } }
 	if S.layout ~= "narrow" then
-		add(machine.os, "dim", true)
+		start[#start + 1] = { key = "os", words = machine.os, priority = 3 }
 	end
 	if S.sample then
-		add("up " .. format.duration(S.sample.uptime), "dim", false)
+		start[#start + 1] = { key = "up", words = "up " .. format.duration(S.sample.uptime), priority = 6 }
 		if S.layout == "wide" then
 			local load = S.sample.load
-			add(string.format("load %.2f %.2f %.2f", load[1], load[2], load[3]), "dim", false)
+			start[#start + 1] = { key = "load", words = string.format("load %.2f %.2f %.2f", load[1], load[2], load[3]), priority = 4 }
 		end
 	end
-	row:child(b.spacer())
+	local finish = {}
 	if S.paused then
-		row:child(b.div():px(4):no_shrink():child(b.text("Paused"):color("warning"):weight(600)))
+		finish[#finish + 1] = { key = "paused", words = "Paused", tone = "warn", priority = 10 }
 	end
-	row:child(item("status-interval", "every " .. format.interval(S.interval), "Update interval · click to change · + and − step it"))
-	row:child(item("status-pause", S.paused and "Resume" or "Pause", S.paused and "Resume updates · Space" or "Pause updates · Space", S.paused and "warning" or nil))
-	return row
+	finish[#finish + 1] = {
+		key = "interval",
+		words = "every " .. format.interval(S.interval),
+		press = true,
+		tip = "Update interval · click to change · + and − step it",
+		priority = 5,
+	}
+	finish[#finish + 1] = {
+		key = "pause",
+		words = S.paused and "Resume" or "Pause",
+		press = true,
+		tip = S.paused and "Resume updates" or "Pause updates",
+		keys = "space",
+		tone = S.paused and "warn" or nil,
+		priority = 8,
+	}
+	return kit.u:status("status", { start = start, finish = finish })
 end
 
 return status

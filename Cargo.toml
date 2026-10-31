@@ -20,6 +20,9 @@ serde_json = "1"
 # What the machine measures: CPUs, memory, processes, network interfaces, disks, sensors. 0.38 is the
 # last release that builds with the toolchain the pens share (rust 1.88).
 sysinfo = { version = "0.38", default-features = false, features = ["system", "network", "disk", "component", "user"] }
+# The filter's /regular expressions/: the engine that runs in time linear in the text (no
+# back-references, no look-around), MIT or Apache-2.0, and already in Cargo.lock under pencere.
+regex = "1"
 # What sysinfo does not say, and the signals: the machine's name, kill(2), setpriority(2).
 libc = "0.2"
 

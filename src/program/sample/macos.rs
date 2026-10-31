@@ -24,3 +24,55 @@ pub fn memory_pressure() -> Option<f64> {
 pub fn memory_pressure() -> Option<f64> {
     None
 }
+
+/// What sysinfo does not say of a process on macOS: its nice value and the number of its threads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Task {
+    pub nice: i32,
+    pub threads: u32,
+}
+
+#[cfg(target_os = "macos")]
+pub fn task(pid: u32) -> Option<Task> {
+    let pid = libc::c_int::try_from(pid).ok()?;
+    // SAFETY: `info` is a zeroed plain-data struct of the size handed to the call, which fills at
+    // most that many bytes and says how many it did.
+    let bsd = unsafe {
+        let mut info: libc::proc_bsdinfo = std::mem::zeroed();
+        let size = libc::c_int::try_from(std::mem::size_of::<libc::proc_bsdinfo>()).ok()?;
+        let got = libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            std::ptr::addr_of_mut!(info).cast(),
+            size,
+        );
+        (got == size).then_some(info)?
+    };
+    // SAFETY: as above.
+    let threads = unsafe {
+        let mut info: libc::proc_taskinfo = std::mem::zeroed();
+        let size = libc::c_int::try_from(std::mem::size_of::<libc::proc_taskinfo>()).ok()?;
+        let got = libc::proc_pidinfo(
+            pid,
+            libc::PROC_PIDTASKINFO,
+            0,
+            std::ptr::addr_of_mut!(info).cast(),
+            size,
+        );
+        if got == size {
+            u32::try_from(info.pti_threadnum).unwrap_or(1)
+        } else {
+            1
+        }
+    };
+    Some(Task {
+        nice: bsd.pbi_nice,
+        threads,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn task(_pid: u32) -> Option<Task> {
+    None
+}

@@ -7,6 +7,7 @@
 
 mod overview;
 mod params;
+mod processes;
 mod session;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use serde_json::Value;
 use crate::session::Session;
 
 /// What a call could not do.
+#[derive(Debug)]
 enum Failure {
     /// The params are not what the call takes.
     BadParams(String),
@@ -54,5 +56,7 @@ fn call<P: DeserializeOwned + 'static, T: Serialize + 'static>(
 /// The calls and the topics the page may use, answered from `session`.
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
-    overview::topic(options, session)
+    let options = processes::calls(options, session);
+    let options = overview::topic(options, session);
+    processes::topic(options, session)
 }

@@ -57,23 +57,25 @@ function overview.start()
 	end)
 end
 
--- Four cards in a row on a wide, short page; two and two otherwise.
+-- The band over the table: four cards in a row on a wide page, four gauges on a narrow one. The
+-- table is what the page is for; the band is what is left of the machine around it.
+local CARD_H = 124
+-- A page this tall has room for the cards with their detail lines.
+local ROOMY_CARD_H = 196
+local ROOMY_PAGE = 900
+local WIDE_FROM = 760
+
 function overview.view()
-	local rows = (S.width >= 900 and S.height < 460) and 1 or 2
-	local columns = 4 // rows
-	local height = S.height - SIZE.status - 2 * PAGE_PAD
-	local w = math.floor((S.width - 2 * PAGE_PAD - (columns - 1) * GAP) / columns)
-	local h = math.floor((height - (rows - 1) * GAP) / rows)
-	local list = cards.list(w, h)
-	local grid = b.div():col():gap(GAP):p(PAGE_PAD):grow(1):min_h(0)
-	for row = 1, rows do
-		local line = b.div():row():gap(GAP):no_shrink()
-		for column = 1, columns do
-			line:child(list[(row - 1) * columns + column])
+	if S.width >= WIDE_FROM then
+		local w = math.floor((S.width - 2 * PAGE_PAD - 3 * GAP) / 4)
+		local list = cards.list(w, S.height >= ROOMY_PAGE and ROOMY_CARD_H or CARD_H)
+		local row = b.div():row():gap(GAP):px(PAGE_PAD):pt(PAGE_PAD):no_shrink()
+		for _, one in list do
+			row:child(one)
 		end
-		grid:child(line)
+		return row
 	end
-	return grid
+	return b.div():px(PAGE_PAD):pt(PAGE_PAD / 2):no_shrink():child(cards.gauges(S.width - 2 * PAGE_PAD))
 end
 
 return overview

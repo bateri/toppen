@@ -261,6 +261,44 @@ local function disk_card()
 	return spec
 end
 
+-- --- The gauges -------------------------------------------------------------------------------------------
+
+local GAUGE = 20
+local NAME_W = 64
+
+-- The four cards as four lines, for a pane too narrow for a graph each: a name, a meter and the
+-- value of this moment, in `w` points. Network has no meter: its rates are not a share of anything.
+function cards.gauges(w)
+	local sample = S.sample
+	local value_w = w >= 420 and 168 or 118
+	local box = b.div():col():gap(2):w(w):no_shrink()
+	local function line(name, share, words)
+		local row = b.div():row():items_center():gap(8):h(GAUGE):w(w):no_shrink()
+		row:child(b.text(name):weight(600):w(NAME_W):no_shrink())
+		if share then
+			row:child(graph.meter(share / 100, format.load_role(share), math.max(w - NAME_W - value_w - 16, 24), 6))
+		else
+			row:child(b.spacer())
+		end
+		row:child(b.text(words):color("dim"):truncate():min_w(0):w(share and value_w or w - NAME_W - 8))
+		box:child(row)
+	end
+	if not sample then
+		return box
+	end
+	line("CPU", sample.cpu.total, string.format("%s  load %.2f", format.percent(sample.cpu.total), sample.load[1]))
+	local mem = sample.mem
+	local used = mem.total > 0 and mem.used / mem.total * 100 or 0
+	line("Memory", used, string.format("%s  %s", format.percent(used), format.short_bytes(mem.used)))
+	line("Network", nil, string.format("down %s · up %s", format.rate(sample.net.rx), format.rate(sample.net.tx)))
+	local volume = sample.disk.volumes[1]
+	if volume then
+		local share = volume.total > 0 and volume.used / volume.total * 100 or 0
+		line("Disk", share, string.format("%s  %s", format.percent(share), volume.mount))
+	end
+	return box
+end
+
 -- The four cards at `w` by `h` points each, in the order of the overview.
 function cards.list(w, h)
 	return {

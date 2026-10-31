@@ -1,0 +1,693 @@
+-- The process table: what the program says of the processes in view (`processes`), and the library's
+-- grid that draws them. The page holds the rows of a window, not the processes: ordering, filtering,
+-- folding and holding the order are the program's (`view`), and the page says how the person wants
+-- the table and where they are looking.
+
+local kit = require("../lib/kit")
+local format = require("../lib/format")
+local graph = require("./graph")
+
+local b, u, S, act = kit.b, kit.u, kit.S, kit.act
+
+local tab = {}
+
+local ROW = 22
+-- How long the order stays held after a key, seconds.
+local KEYED = 3
+
+-- The columns the table can show, in order. `priority` is what stays when the page is narrow (the
+-- least goes first); `fixed` never goes; `down` sorts largest first on the first press.
+local COLUMNS = {
+	-- The grid does not make a column narrower than this, so the mark has all of it.
+	{ key = "mark", title = "", width = 56, priority = 10, fixed = true },
+	{ key = "name", title = "Name", width = 230, priority = 9, fixed = true },
+	{ key = "pid", title = "PID", width = 72, align = "end", priority = 8 },
+	{ key = "user", title = "User", width = 100, priority = 4 },
+	{ key = "cpu", title = "CPU", width = 124, align = "end", priority = 9, down = true },
+	{ key = "memory", title = "Memory", width = 130, align = "end", priority = 8, down = true },
+	{ key = "threads", title = "Threads", width = 78, align = "end", priority = 3, down = true },
+	{ key = "state", title = "State", width = 62, priority = 2 },
+	{ key = "time", title = "Time", width = 92, align = "end", priority = 2, down = true },
+	{ key = "virt", title = "Virtual", width = 100, align = "end", priority = 1, down = true },
+	{ key = "nice", title = "Nice", width = 60, align = "end", priority = 1 },
+	{ key = "read", title = "Read", width = 96, align = "end", priority = 1, down = true },
+	{ key = "write", title = "Write", width = 96, align = "end", priority = 1, down = true },
+	{ key = "command", title = "Command", width = 420, priority = 0 },
+}
+local BY_KEY = {}
+for _, column in COLUMNS do
+	BY_KEY[column.key] = column
+end
+
+-- What the table keeps: what the program last said, and what the person did to the table here.
+local T = {
+	got = false,
+	view = { sort = "cpu", descending = true, mode = "flat", filter = "", hold = false, root = nil, error = nil },
+	total = 0,
+	matched = 0,
+	visible = 0,
+	moved = 0,
+	held = false,
+	-- The index (from 0) of rows[1] among all the rows, and the rows told.
+	first = 0,
+	rows = {},
+	-- The row the cursor is on, as the program names it: { pid =, start = } or { group = }.
+	selected = nil,
+	-- The columns drawn last, and the ones the person hid.
+	shown = {},
+	hidden = { virt = true, nice = true, read = true, write = true },
+	-- What holds the order: the pointer over the table, a key lately; and the person letting go.
+	over = false,
+	freed = false,
+	keyed = 0,
+	-- The window last asked for, to ask it once.
+	window = nil,
+	-- Whether the keyboard was put in the table yet.
+	focused = false,
+}
+tab.state = T
+
+-- The grid's own state: the cursor, the widths the person dragged, the sort it draws.
+local G = { cursor = nil, widths = {}, sort = nil }
+
+local function row_at(place)
+	return T.rows[place - T.first]
+end
+
+-- A row as the program names it in `view`.
+local function ref(row)
+	if row.group then
+		return { group = row.name }
+	end
+	return { pid = row.pid, start = row.start }
+end
+
+local function same(a, b_)
+	if a == nil or b_ == nil then
+		return a == b_
+	end
+	return a.group == b_.group and a.pid == b_.pid and a.start == b_.start
+end
+
+-- --- Asking the program --------------------------------------------------------------------------------
+
+-- Tells the program how the table is to be, and takes what it says it is.
+local function set(params)
+	kit.call("view", params, function(result, err)
+		if result then
+			T.view = result
+		end
+		return true
+	end)
+end
+
+local function sync_hold()
+	local want = (T.over and not T.freed) or S.now < T.keyed
+	if want ~= T.view.hold then
+		T.view.hold = want
+		set({ hold = want })
+	end
+end
+
+-- A key was used: the order stays where it is for a few seconds.
+local function keyed()
+	T.keyed = S.now + KEYED
+	sync_hold()
+	b.time.after(KEYED + 0.05, sync_hold)
+end
+
+-- The pointer is over the table, or is not.
+function tab.pointer(over)
+	if over ~= T.over then
+		T.over = over
+		if not over then
+			T.freed = false
+		end
+		sync_hold()
+	end
+end
+
+local function ask_window(first, last)
+	local key = first .. ":" .. last
+	if T.window ~= key then
+		T.window = key
+		set({ window = { first = first - 1, count = last - first + 1 } })
+	end
+end
+
+-- The rows the grid has made where some have no data, and the window not yet asked for them: the
+-- whole of what it made (the rows in view and those near them), for the program tells one window and
+-- the page holds that.
+local function missing()
+	if not T.got then
+		return nil
+	end
+	local first, last = b.list_window(u:name("procs", "body"))
+	if first == nil or T.window == first .. ":" .. last then
+		return nil
+	end
+	for place = first, last do
+		if row_at(place) == nil then
+			return first, last
+		end
+	end
+	return nil
+end
+
+local function fill()
+	local first, last = missing()
+	if first ~= nil then
+		ask_window(first, last)
+	end
+end
+
+-- The page was laid out: the rows that came into view are asked for, in the next frame (a layout has
+-- no reply to ask in). A timer only where there is something to ask, or the page would never settle.
+function tab.settle()
+	if missing() ~= nil then
+		b.time.after(0, function()
+			fill()
+			return kit.take(nil)
+		end)
+	end
+end
+
+-- --- What the program told ---------------------------------------------------------------------------------
+
+function tab.told(told)
+	T.got = true
+	T.total, T.matched, T.visible = told.total, told.matched, told.visible
+	T.moved, T.held, T.first, T.rows = told.moved, told.held, told.first, told.rows
+	T.view = told.view
+	G.sort = { column = told.view.sort, descending = told.view.descending }
+	if T.selected ~= nil then
+		if told.selectedIndex ~= nil then
+			-- The cursor follows its process wherever the order takes it. The same table is changed, not
+			-- a new one made: the grid scrolls to a cursor it has not seen.
+			if G.cursor == nil then
+				G.cursor = { row = told.selectedIndex + 1, column = 2 }
+			else
+				G.cursor.row = told.selectedIndex + 1
+			end
+		elseif G.cursor ~= nil then
+			-- It ended, or a fold hides it: the cursor stays where it was, on whatever is there.
+			G.cursor.row = math.max(1, math.min(G.cursor.row, told.visible))
+			local row = row_at(G.cursor.row)
+			if row ~= nil and not same(T.selected, ref(row)) then
+				T.selected = ref(row)
+				set({ selected = T.selected })
+			end
+		end
+	end
+	if G.cursor == nil and T.selected == nil and told.first == 0 and told.rows[1] ~= nil then
+		-- The grid takes any key as a step to its first cell while it has no cursor: it starts on the
+		-- first row, as every list does.
+		G.cursor = { row = 1, column = 2 }
+		T.selected = ref(told.rows[1])
+		set({ selected = T.selected })
+	end
+	if not T.focused then
+		T.focused = true
+		kit.gather(u:focus(u:name("procs", "body")))
+	end
+end
+
+function tab.start()
+	b.subscribe("processes", {}, function(told)
+		tab.told(told)
+		return kit.take(true)
+	end)
+end
+
+-- --- The cells -----------------------------------------------------------------------------------------------
+
+-- A text of a row, in the tone of its state: dim once the process has ended. The numbers of a column
+-- that ends at the right are set against its edge (the grid only moves a cell's box, and the words
+-- grow to fill it).
+local function words_of(row, words, at_end)
+	if row.exited then
+		local text = b.text(words):color("quiet"):truncate():min_w(0)
+		if at_end then
+			return b.div():row():items_center():justify_end():grow(1):min_w(0):child(text)
+		end
+		return text
+	end
+	if at_end then
+		return b.div():row():items_center():justify_end():grow(1):min_w(0):child(b.text(words):truncate():min_w(0))
+	end
+	return words
+end
+
+-- The words with the ranges `[from, to)` of characters marked, as the filter found them.
+local function marked(words, ranges, base)
+	if ranges == nil or #ranges == 0 then
+		return b.text(words):color(base):truncate():min_w(0)
+	end
+	local line = b.div():row():items_center():min_w(0):clip()
+	local at = 1
+	for _, range in ranges do
+		local from = utf8.offset(words, range[1] + 1)
+		local to = utf8.offset(words, range[2] + 1)
+		if from ~= nil and to ~= nil and from >= at and to > from then
+			if from > at then
+				line:child(b.text(string.sub(words, at, from - 1)):color(base):no_shrink())
+			end
+			line:child(b.div():bg(b.alpha("accent", 0.32)):rounded(2)
+				:child(b.text(string.sub(words, from, to - 1)):color("foreground"):no_shrink()))
+			at = to
+		end
+	end
+	if at <= #words then
+		line:child(b.text(string.sub(words, at)):color(base):no_shrink())
+	end
+	return line
+end
+
+local function toggle_name(row)
+	if row.group then
+		return "procs-fold/g/" .. row.name
+	end
+	return "procs-fold/p/" .. row.pid .. "/" .. row.start
+end
+
+local function name_cell(row)
+	local base = row.exited and "quiet" or "foreground"
+	local box = b.div():row():items_center():gap(2):grow(1):min_w(0):clip()
+	if T.view.mode ~= "flat" then
+		if row.depth > 0 then
+			box:child(b.div():w(row.depth * 14):h(1):no_shrink())
+		end
+		if row.children > 0 then
+			box:child(b.div():press(toggle_name(row)):role("button")
+				:label((row.folded and "Open " or "Fold ") .. row.name)
+				:w(16):h(ROW - 4):no_shrink():items_center():justify_center():rounded(3)
+				:child(kit.icon(row.folded and "chevron-right" or "chevron-down", 13, "dim")))
+		else
+			box:child(b.div():w(16):h(1):no_shrink())
+		end
+	end
+	box:child(marked(row.name, row.hits and row.hits.name, base))
+	if row.children > 0 and (row.group or row.folded) then
+		box:child(b.text((row.group and "×" or "+") .. row.children):color("quiet"):no_shrink())
+	end
+	return box
+end
+
+local function mark_cell(row)
+	if row.group or not S.marks[row.pid] then
+		return b.div():w(8):h(8):no_shrink()
+	end
+	return b.div():w(8):h(8):rounded(4):bg("accent"):no_shrink()
+end
+
+-- A value after a small meter, to the right.
+local function meter_cell(row, share, role, words)
+	local line = b.div():row():items_center():justify_end():gap(6):grow(1):min_w(0)
+	if share ~= nil then
+		line:child(graph.meter(share, role, 34, 5))
+	end
+	local text = b.text(words):no_shrink()
+	if row.exited then
+		text:color("quiet")
+	end
+	line:child(text)
+	return line
+end
+
+local function cell(place, column)
+	local row = row_at(place)
+	if row == nil then
+		return nil
+	end
+	local key = column.key
+	if key == "mark" then
+		return mark_cell(row)
+	elseif key == "name" then
+		return name_cell(row)
+	elseif key == "pid" then
+		return words_of(row, row.group and "" or tostring(row.pid), true)
+	elseif key == "user" then
+		return words_of(row, row.user)
+	elseif key == "cpu" then
+		-- The bar is a share of one processor; the colour is the share of the machine the process takes.
+		local machine = math.max(S.boot.machine.threads, 1)
+		return meter_cell(row, math.min(row.cpu / 100, 1), format.load_role(row.cpu / machine), string.format("%.1f%%", row.cpu))
+	elseif key == "memory" then
+		local total = S.boot.machine.memory
+		local share = total > 0 and row.mem / total or 0
+		return meter_cell(row, share, "accent", format.short_bytes(row.mem))
+	elseif key == "threads" then
+		return words_of(row, tostring(row.threads), true)
+	elseif key == "state" then
+		return words_of(row, row.group and "" or row.state)
+	elseif key == "time" then
+		return words_of(row, format.cpu_time(row.time), true)
+	elseif key == "virt" then
+		return words_of(row, format.short_bytes(row.virt), true)
+	elseif key == "nice" then
+		return words_of(row, row.group and "" or tostring(row.nice), true)
+	elseif key == "read" then
+		return words_of(row, row.read >= 1 and format.rate(row.read) or "", true)
+	elseif key == "write" then
+		return words_of(row, row.write >= 1 and format.rate(row.write) or "", true)
+	elseif key == "command" then
+		return marked(row.command, row.hits and row.hits.command, row.exited and "quiet" or "dim")
+	end
+	return nil
+end
+
+-- --- The columns -----------------------------------------------------------------------------------------------
+
+-- The columns drawn in `room` points: those the person did not hide, the ones of the least priority
+-- gone first where they do not fit; the command takes what is left, if that is enough to read.
+local function columns_in(room)
+	local list = {}
+	for _, column in COLUMNS do
+		if not T.hidden[column.key] then
+			list[#list + 1] = column
+		end
+	end
+	-- The name gives way before a column goes: down to this, unless the person sized it.
+	local name_least = 150
+	local name_now = nil
+	local function width(column)
+		if G.widths[column.key] ~= nil then
+			return math.max(G.widths[column.key], 56)
+		end
+		if column.key == "name" and name_now ~= nil then
+			return name_now
+		end
+		return math.max(column.width, 56)
+	end
+	local function sum()
+		local total = 0
+		for _, column in list do
+			if column.key ~= "command" then
+				total += width(column)
+			end
+		end
+		return total
+	end
+	local has_command = false
+	for index, column in list do
+		if column.key == "command" then
+			has_command = true
+			table.remove(list, index)
+			break
+		end
+	end
+	while sum() > room do
+		local over = sum() - room
+		if G.widths.name == nil and width(BY_KEY.name) > name_least then
+			name_now = math.max(name_least, width(BY_KEY.name) - over)
+		else
+			local worst, at = nil, nil
+			for index, column in list do
+				if not column.fixed and (worst == nil or column.priority < worst.priority) then
+					worst, at = column, index
+				end
+			end
+			if worst == nil then
+				break
+			end
+			table.remove(list, at)
+		end
+	end
+	local out = {}
+	for index, column in list do
+		out[index] = { key = column.key, title = column.title, align = column.align, width = width(column) }
+	end
+	if has_command and room - sum() >= 160 then
+		out[#out + 1] = { key = "command", title = "Command", width = G.widths.command or math.floor(room - sum()) }
+	end
+	return out
+end
+
+-- --- Actions of the table ------------------------------------------------------------------------------------
+
+local function toggle_fold(row)
+	set({ toggle = ref(row) })
+end
+
+local function select_row(row)
+	T.selected = ref(row)
+	set({ selected = T.selected })
+	keyed()
+end
+
+local function selected_row()
+	if G.cursor == nil then
+		return nil
+	end
+	return row_at(G.cursor.row)
+end
+
+local function toggle_mark(row)
+	if row == nil or row.group then
+		return
+	end
+	S.marks[row.pid] = (not S.marks[row.pid]) or nil
+end
+
+function tab.mark()
+	toggle_mark(selected_row())
+end
+
+function tab.fold()
+	local row = selected_row()
+	if row ~= nil and row.children > 0 then
+		toggle_fold(row)
+	end
+end
+
+function tab.fold_all(open)
+	set({ fold = open and "none" or "all" })
+end
+
+-- Tree and groups are modes of the same table: the key of the mode in force goes back to the flat list.
+function tab.mode(mode)
+	if T.view.mode == mode then
+		mode = "flat"
+	end
+	T.view.mode = mode
+	set({ mode = mode })
+end
+
+function tab.set_mode(mode)
+	T.view.mode = mode
+	set({ mode = mode })
+end
+
+-- Narrows the table to the process under the cursor and what is below it, or leaves it.
+function tab.subtree()
+	if T.view.root ~= nil then
+		set({ root = b.json.null })
+		return
+	end
+	local row = selected_row()
+	if row ~= nil and not row.group then
+		T.root_name = row.name
+		set({ root = { pid = row.pid, start = row.start } })
+	end
+end
+
+function tab.leave_subtree()
+	set({ root = b.json.null })
+end
+
+-- Lets go of the held order: the table sorts again, and stays so until the pointer leaves.
+function tab.release()
+	T.freed = true
+	T.keyed = 0
+	T.view.hold = false
+	set({ hold = false })
+end
+
+local function sort_by(key)
+	local column = BY_KEY[key]
+	if column == nil or key == "mark" then
+		return
+	end
+	local descending
+	if T.view.sort == key then
+		descending = not T.view.descending
+	else
+		descending = column.down == true
+	end
+	T.view.sort, T.view.descending = key, descending
+	G.sort = { column = key, descending = descending }
+	set({ sort = key, descending = descending })
+end
+
+-- A step to the next sortable column on the right (`1`) or the left (`-1`), as the table shows them.
+function tab.sort_step(direction)
+	local order = {}
+	for _, column in T.shown do
+		if column.key ~= "mark" then
+			order[#order + 1] = column.key
+		end
+	end
+	local at = 1
+	for index, key in order do
+		if key == T.view.sort then
+			at = index
+		end
+	end
+	local key = order[((at - 1 + direction) % #order) + 1]
+	if key ~= nil then
+		sort_by(key)
+	end
+end
+
+function tab.reverse()
+	T.view.descending = not T.view.descending
+	G.sort = { column = T.view.sort, descending = T.view.descending }
+	set({ descending = T.view.descending })
+end
+
+local function row_menu(place, at)
+	local row = row_at(place)
+	if row == nil then
+		return true
+	end
+	select_row(row)
+	local entries = {}
+	if row.children > 0 then
+		local what = row.group and "group" or "branch"
+		entries[#entries + 1] = { key = "fold", title = (row.folded and "Open " or "Fold ") .. what, keys = "f" }
+	end
+	if not row.group then
+		entries[#entries + 1] = { key = "mark", title = S.marks[row.pid] and "Unmark" or "Mark", keys = "m" }
+		entries[#entries + 1] = {
+			key = "subtree",
+			title = T.view.root ~= nil and "Show every process" or "Only this process and its children",
+			keys = "o",
+		}
+	end
+	if #entries == 0 then
+		return true
+	end
+	return u:menu("row-menu", entries, { at = at })
+end
+
+-- The columns' own menu: a click on the head with the right button.
+function tab.columns_menu(at)
+	local entries = {}
+	for _, column in COLUMNS do
+		if not column.fixed then
+			local hidden = T.hidden[column.key]
+			entries[#entries + 1] = { key = column.key, title = (hidden and "Show " or "Hide ") .. column.title }
+		end
+	end
+	return u:menu("columns-menu", entries, { at = at })
+end
+
+-- An action of the grid or of its menus. Whether it was the table's, and its reply.
+function tab.action(action)
+	local from, kind = action.from, action.kind
+	if from == "procs" then
+		if kind == "select" then
+			local column = T.shown[action.column]
+			local row = row_at(action.row)
+			if row == nil then
+				return true
+			end
+			if column ~= nil and column.key == "mark" then
+				-- The mark is a click on the cell, and the cursor goes to the name so that a second click on
+				-- the mark is a change of cell again.
+				toggle_mark(row)
+				if G.cursor ~= nil then
+					G.cursor.column = 2
+				end
+			end
+			select_row(row)
+		elseif kind == "sort" then
+			sort_by(action.column)
+		elseif kind == "open" then
+			local row = row_at(action.row)
+			if row ~= nil and row.children > 0 then
+				toggle_fold(row)
+			end
+		elseif kind == "menu" then
+			return row_menu(action.row, action.at)
+		elseif kind == "need" then
+			fill()
+		end
+		return true
+	elseif from == "row-menu" and kind == "menu" then
+		if action.entry == "fold" then
+			tab.fold()
+		elseif action.entry == "mark" then
+			tab.mark()
+		elseif action.entry == "subtree" then
+			tab.subtree()
+		end
+		return true
+	elseif from == "columns-menu" and kind == "menu" then
+		T.hidden[action.entry] = (not T.hidden[action.entry]) or nil
+		return true
+	end
+	return nil
+end
+
+-- An event no component took: a fold arrow pressed, a right press on the head of a column.
+function tab.event(event)
+	if event.type ~= "press" then
+		return nil
+	end
+	-- What the press landed on: the library has not taken it, so it is read from the layout.
+	local over = b.layout.hit({ x = event.x, y = event.y })
+	if over == nil then
+		return nil
+	end
+	if event.button == "right" and string.sub(over, 1, 11) == "procs/head/" then
+		return tab.columns_menu({ x = event.x, y = event.y })
+	end
+	if (event.button or "left") == "left" then
+		local pid, start = string.match(over, "^procs%-fold/p/(%d+)/(%d+)$")
+		if pid ~= nil then
+			set({ toggle = { pid = tonumber(pid), start = tonumber(start) } })
+			return true
+		end
+		local group = string.match(over, "^procs%-fold/g/(.+)$")
+		if group ~= nil then
+			set({ toggle = { group = group } })
+			return true
+		end
+	end
+	return nil
+end
+
+-- --- Drawing -------------------------------------------------------------------------------------------------------
+
+-- Whether the pointer at `at` is over the table.
+function tab.contains(at)
+	local box = b.layout.bounds("procs")
+	return box ~= nil and at ~= nil and at.x >= box.x and at.x < box.x + box.w and at.y >= box.y and at.y < box.y + box.h
+end
+
+function tab.summary()
+	return T
+end
+
+function tab.view(width)
+	if not T.got then
+		return b.div():grow(1):items_center():justify_center():child(kit.spinner(18, "quiet"))
+	end
+	local columns = columns_in(width - 2)
+	T.shown = columns
+	if G.cursor ~= nil and G.cursor.column > #columns then
+		G.cursor.column = #columns
+	end
+	return u:grid("procs", {
+		columns = columns,
+		count = T.visible,
+		cell = cell,
+		state = G,
+		numbers = false,
+		row_height = ROW,
+		head_height = ROW + 2,
+	})
+end
+
+return tab

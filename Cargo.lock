@@ -1231,6 +1231,7 @@ dependencies = [
  "pencere-drive",
  "pencere-sandbox",
  "pencere-view",
+ "regex",
  "serde",
  "serde_json",
  "sysinfo",

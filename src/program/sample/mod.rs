@@ -110,6 +110,43 @@ pub struct Disk {
     pub volumes: Vec<Volume>,
 }
 
+/// A process as one look at the machine found it. A process is named by its pid and the second it
+/// started in: a pid is used again after its process ends.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Process {
+    pub pid: u32,
+    pub ppid: u32,
+    /// Seconds since the epoch the process started at.
+    pub start: u64,
+    pub name: String,
+    pub user: String,
+    /// The command line, words joined by a space; the name where the system says none.
+    pub command: String,
+    /// Percent of one processor: 100 is one processor busy, and a process of many threads passes it.
+    pub cpu: f64,
+    /// Resident memory, bytes.
+    pub memory: u64,
+    /// Virtual memory, bytes.
+    pub virt: u64,
+    pub threads: u32,
+    /// One letter: R running, S sleeping, D waiting on a disk, T stopped, Z zombie, I idle.
+    pub state: char,
+    pub nice: i32,
+    /// Processor time the process has used, milliseconds.
+    pub cpu_time: u64,
+    /// Bytes a second since the sample before.
+    pub read: f64,
+    pub write: f64,
+}
+
+impl Process {
+    /// What a person names the process by: its pid and when it started.
+    #[must_use]
+    pub fn key(&self) -> (u32, u64) {
+        (self.pid, self.start)
+    }
+}
+
 /// One look at the machine.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sample {
@@ -123,6 +160,7 @@ pub struct Sample {
     pub load: [f64; 3],
     /// Seconds since the machine started.
     pub uptime: u64,
+    pub processes: Vec<Process>,
 }
 
 /// Where measurements come from.

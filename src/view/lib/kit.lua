@@ -1,11 +1,14 @@
--- What every file of the page shares: the kit's builders, the one `Ui` that remembers the pointer,
--- the page's state, the reply that what the page does is gathered into, and the few pieces the page
--- is made of more than once (an icon, a button, the keys of a command).
+-- What every file of the page shares: the kit's builders, the library's context `u` (which
+-- remembers the pointer and the keyboard and gives the components), the page's state, the reply that
+-- what the page does is gathered into, and the few pieces the page is made of more than once (an
+-- icon, the keys of a command).
 
 local keys = require("@pencere/keys")
+local lib = require("@pencere/ui")
 
 local b = pencere
-local ui = b.Ui.new()
+-- Compact: a monitor is a dense page, and the rows of its table are 22 points.
+local u = lib.new({ density = "compact" })
 
 -- The page's state: what the program said and what the person did, in one place, so that `render` is
 -- a function of it.
@@ -27,10 +30,12 @@ local S = {
 	sample = nil,
 	-- Calls out that the person waits on: a quiet spinner.
 	busy = 0,
+	-- The processes the person marked, by pid (Phase 3 acts on them).
+	marks = {},
 }
 
 local SIZE = {
-	status = 24,
+	status = u.theme.size.status,
 	-- The widths the page changes its layout at, points.
 	narrow = 640,
 	medium = 1000,
@@ -73,11 +78,6 @@ end
 
 -- --- Words and pieces ------------------------------------------------------------------------------
 
--- Whether the pointer is over the element named `id`.
-local function hovered(id)
-	return ui.hover == id
-end
-
 -- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme.
 local function icon(name, size, color)
 	size = size or 15
@@ -108,14 +108,14 @@ local act = {}
 
 return {
 	b = b,
-	ui = ui,
+	u = u,
+	lib = lib,
 	S = S,
 	SIZE = SIZE,
 	act = act,
 	gather = gather,
 	take = take,
 	call = call,
-	hovered = hovered,
 	icon = icon,
 	keys_of = keys_of,
 	spinner = spinner,

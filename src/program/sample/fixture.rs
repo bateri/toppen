@@ -6,7 +6,8 @@
 //! Debug builds only: a release has no fixture, and `TOPPEN_FIXTURE` means nothing to it.
 
 use super::{
-    Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Sample, Source, Volume,
+    Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Source,
+    Volume,
 };
 
 const GIB: u64 = 1 << 30;
@@ -27,6 +28,7 @@ struct Shape {
     busy: f64,
     pressure: bool,
     disk_io: bool,
+    processes: usize,
 }
 
 const SMALL: Shape = Shape {
@@ -39,6 +41,7 @@ const SMALL: Shape = Shape {
     busy: 28.0,
     pressure: true,
     disk_io: true,
+    processes: 60,
 };
 
 const LARGE: Shape = Shape {
@@ -51,10 +54,105 @@ const LARGE: Shape = Shape {
     busy: 55.0,
     pressure: false,
     disk_io: true,
+    processes: 2000,
 };
+
+/// The names the fixture's processes have, and the users they run as: a few names many times over,
+/// so that a group has more than one in it.
+const NAMES: [&str; 16] = [
+    "zsh",
+    "node",
+    "Code Helper",
+    "chrome",
+    "postgres",
+    "redis-server",
+    "python3",
+    "cargo",
+    "rustc",
+    "ssh",
+    "tmux",
+    "nginx",
+    "kworker",
+    "java",
+    "sleep",
+    "bash",
+];
+const USERS: [&str; 4] = ["lantern", "root", "postgres", "www"];
+
+/// A process of the fixture, as it is when it is not changing.
+struct Spec {
+    pid: u32,
+    ppid: u32,
+    start: u64,
+    name: String,
+    user: &'static str,
+    command: String,
+    cpu: f64,
+    memory: u64,
+    threads: u32,
+    nice: i32,
+    /// A process that comes and goes: it is there two ticks of three, a few ticks at a time.
+    churn: bool,
+}
+
+/// The processes of a machine of `count`, the same every time: one init, then each with a parent
+/// among the ones before it.
+fn specs(count: usize) -> Vec<Spec> {
+    let mut specs = Vec::with_capacity(count);
+    for index in 0..count {
+        let seed = index as u64;
+        let name = if index == 0 {
+            "launchd"
+        } else {
+            NAMES[(noise(seed * 31 + 7) * NAMES.len() as f64) as usize % NAMES.len()]
+        };
+        let ppid = if index == 0 {
+            0
+        } else if index < 6 {
+            1
+        } else {
+            // Mostly the processes just before it: a tree that is deep in places and wide in others.
+            let back = 1 + (noise(seed * 17 + 3) * noise(seed * 5 + 1) * 40.0) as usize;
+            specs[index.saturating_sub(back).max(1)..index.max(2)]
+                .first()
+                .map_or(1, |parent: &Spec| parent.pid)
+        };
+        let user = if index == 0 {
+            "root"
+        } else {
+            USERS[(noise(seed * 13 + 9) * 4.0) as usize % 4]
+        };
+        specs.push(Spec {
+            pid: if index == 0 {
+                1
+            } else {
+                100 + index as u32 * 7
+            },
+            ppid,
+            start: START as u64 - 200_000 + seed * 90,
+            command: if index == 0 {
+                "/sbin/launchd".to_owned()
+            } else {
+                format!(
+                    "/usr/local/bin/{name} --serve --port {} --config /etc/{name}/{index}.toml",
+                    3000 + index
+                )
+            },
+            name: name.to_owned(),
+            user,
+            cpu: (noise(seed * 7 + 2).powi(3) * 90.0).max(0.0),
+            memory: ((4.0 + noise(seed * 11 + 5).powi(2) * 900.0) * 1_048_576.0) as u64,
+            threads: 1 + (noise(seed * 3 + 8) * 24.0) as u32,
+            nice: [0, 0, 0, 0, 5, 10, -5][(noise(seed * 19 + 4) * 7.0) as usize % 7],
+            churn: index > 5 && index % 9 == 0,
+        });
+    }
+    specs
+}
 
 pub struct Fixture {
     shape: Shape,
+    specs: Vec<Spec>,
     tick: u64,
     total_rx: u64,
     total_tx: u64,
@@ -83,6 +181,7 @@ impl Fixture {
     fn of(shape: Shape) -> Self {
         Self {
             shape,
+            specs: specs(shape.processes),
             tick: 0,
             total_rx: 40 * GIB,
             total_tx: 6 * GIB,
@@ -226,6 +325,7 @@ impl Source for Fixture {
             volumes,
         };
 
+        let processes = self.processes(tick);
         Sample {
             at: START + tick as f64,
             cpu: Cpu { total, cores, freq },
@@ -238,7 +338,56 @@ impl Source for Fixture {
                 shape.threads as f64 * 0.1,
             ],
             uptime: 3 * 86_400 + tick,
+            processes,
         }
+    }
+}
+
+impl Fixture {
+    /// The processes at `tick`: what each does changes with time, and the churning ones come and go.
+    #[allow(clippy::cast_precision_loss)]
+    fn processes(&self, tick: u64) -> Vec<Process> {
+        self.specs
+            .iter()
+            .enumerate()
+            .filter(|(index, spec)| !spec.churn || (tick / 4 + *index as u64) % 3 != 0)
+            .map(|(index, spec)| {
+                let seed = tick * 7919 + index as u64;
+                let busy = spec.cpu * (0.5 + wave(tick, 30 + index as u64 % 40, index as u64))
+                    + 3.0 * noise(seed);
+                Process {
+                    pid: spec.pid,
+                    ppid: spec.ppid,
+                    start: spec.start,
+                    name: spec.name.clone(),
+                    user: spec.user.to_owned(),
+                    command: spec.command.clone(),
+                    cpu: busy.clamp(0.0, 800.0),
+                    memory: spec.memory + (noise(seed + 1) * 4_000_000.0) as u64,
+                    virt: spec.memory * 6 + 400_000_000,
+                    threads: spec.threads,
+                    state: if busy > 40.0 {
+                        'R'
+                    } else if index % 11 == 0 {
+                        'D'
+                    } else {
+                        'S'
+                    },
+                    nice: spec.nice,
+                    cpu_time: spec.start % 1000 * 1000 + tick * (busy as u64 * 10),
+                    read: if index % 5 == 0 {
+                        40_000.0 * noise(seed + 2)
+                    } else {
+                        0.0
+                    },
+                    write: if index % 7 == 0 {
+                        90_000.0 * noise(seed + 3)
+                    } else {
+                        0.0
+                    },
+                }
+            })
+            .collect()
     }
 }
 

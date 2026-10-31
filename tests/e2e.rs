@@ -84,6 +84,73 @@ fn the_sampling_call_changes_how_often_and_refuses_what_the_program_cannot() {
 }
 
 #[test]
+fn the_view_call_sets_the_table_and_refuses_what_it_does_not_take() {
+    let pane = Pane::new();
+    let heard = pane.ask(
+        &Script::new()
+            .call(
+                "view",
+                json!({ "sort": "memory", "descending": false, "mode": "tree", "filter": "/(x/" }),
+            )
+            .call("view", json!({ "sort": "speed" }))
+            .call("view", json!({ "fold": "some" }))
+            .call("view", json!({ "window": { "first": 1 } }))
+            .call("view", json!({})),
+    );
+    let view = heard[0].result();
+    assert_eq!(view["sort"], "memory");
+    assert_eq!(view["descending"], false);
+    assert_eq!(view["mode"], "tree");
+    // A pattern that is no pattern is said in the view, and the call went through.
+    assert_eq!(view["filter"], "/(x/");
+    assert!(
+        view["error"].as_str().unwrap().starts_with("not a regular"),
+        "{view}"
+    );
+    for refused in &heard[1..4] {
+        assert!(refused.failed("bad-params"), "{refused:?}");
+    }
+    // What was refused changed nothing, and a call with nothing in it says how things are.
+    assert_eq!(heard[4].result()["sort"], "memory");
+}
+
+#[test]
+fn the_processes_topic_pushes_the_window_and_the_counts() {
+    let pane = Pane::new();
+    let log = pane.record(
+        &Script::new()
+            .host_args(&["--subscribe", "processes", "--cancel-after", "2"])
+            .limit(40),
+    );
+    let told = pushes(&log);
+    assert!(!told.is_empty(), "{log}");
+    let first = &told[0];
+    assert_eq!(first["kind"], "processes");
+    assert!(first["total"].as_u64().unwrap() > 40, "{first}");
+    assert_eq!(first["visible"], first["matched"]);
+    // The window is 50 rows and 20 more beyond its edge.
+    assert_eq!(
+        first["rows"].as_array().unwrap().len() as u64,
+        first["total"].as_u64().unwrap().min(70)
+    );
+    assert_eq!(first["first"], 0);
+    assert_eq!(first["view"]["sort"], "cpu");
+    let row = &first["rows"][0];
+    assert!(row["pid"].as_u64().unwrap() > 0);
+    assert!(row["name"].as_str().is_some_and(|name| !name.is_empty()));
+    let shares: Vec<f64> = first["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["cpu"].as_f64().unwrap())
+        .collect();
+    assert!(
+        shares.windows(2).all(|pair| pair[0] >= pair[1]),
+        "{shares:?}"
+    );
+}
+
+#[test]
 fn a_call_the_program_does_not_know_is_not_found() {
     let pane = Pane::new();
     let heard = pane.ask(&Script::new().call("kill-everything", json!({})));

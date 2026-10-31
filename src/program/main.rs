@@ -11,12 +11,14 @@
 //!
 //!   api/       everything the page talks to the program about; it knows the page
 //!   sample/    what the machine measures: the real source and the fixture; knows nothing of the page
+//!   model/     the process table: sorted, filtered, folded and held; knows nothing of the page
 //!   text/      the summary for a person at a terminal that shows no views, and as JSON; same
 //!   sampler    the thread that looks at the machine while someone watches
 
 mod api;
 mod command_line;
 mod icons;
+mod model;
 #[cfg(test)]
 mod page_shots;
 #[cfg(test)]
