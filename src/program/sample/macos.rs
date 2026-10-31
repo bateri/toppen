@@ -25,6 +25,54 @@ pub fn memory_pressure() -> Option<f64> {
     None
 }
 
+/// What memory is made of, as Activity Monitor adds it up: app memory (what programs hold, less what
+/// can be purged), wired, compressed, cached files (and purgeable), and free.
+#[cfg(target_os = "macos")]
+pub fn memory_breakdown(total: u64) -> Option<super::Breakdown> {
+    static HOST: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    // SAFETY: `mach_host_self` takes nothing; its port is kept for the run, not asked for again.
+    // (libc points to the `mach2` crate for it; one call is not worth a dependency, and the lock
+    // file holds the libc that has it.)
+    #[allow(deprecated)]
+    let host = *HOST.get_or_init(|| unsafe { libc::mach_host_self() });
+    // SAFETY: a zeroed plain-data struct of the size the call is told it has.
+    let mut stats: libc::vm_statistics64 = unsafe { std::mem::zeroed() };
+    let mut count = libc::HOST_VM_INFO64_COUNT;
+    // SAFETY: `stats` is as big as `count` says, and the call writes no more.
+    let status = unsafe {
+        libc::host_statistics64(
+            host,
+            libc::HOST_VM_INFO64,
+            std::ptr::addr_of_mut!(stats).cast(),
+            &raw mut count,
+        )
+    };
+    if status != libc::KERN_SUCCESS {
+        return None;
+    }
+    // SAFETY: `sysconf` takes a name and changes nothing.
+    let page = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+    let pages = |count: u32| u64::from(count) * page;
+    let purgeable = pages(stats.purgeable_count);
+    let wired = pages(stats.wire_count);
+    let compressed = pages(stats.compressor_page_count);
+    let cached = pages(stats.external_page_count) + purgeable;
+    let app = pages(stats.internal_page_count).saturating_sub(purgeable);
+    let free = total.saturating_sub(app + wired + compressed + cached);
+    Some(super::Breakdown {
+        app,
+        wired,
+        compressed,
+        cached,
+        free,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn memory_breakdown(_total: u64) -> Option<super::Breakdown> {
+    None
+}
+
 /// What sysinfo does not say of a process on macOS: its nice value and the number of its threads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Task {
@@ -92,4 +140,22 @@ pub fn open_files(pid: u32) -> Option<usize> {
 #[cfg(not(target_os = "macos"))]
 pub fn open_files(_pid: u32) -> Option<usize> {
     None
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_parts_of_memory_add_up_to_the_whole_and_the_system_keeps_some_wired() {
+        let mut system = sysinfo::System::new();
+        system.refresh_memory();
+        let total = system.total_memory();
+        let parts = memory_breakdown(total).expect("this Mac says what memory is made of");
+        assert_eq!(
+            parts.app + parts.wired + parts.compressed + parts.cached + parts.free,
+            total
+        );
+        assert!(parts.wired > 0 && parts.app > 0, "{parts:?}");
+    }
 }

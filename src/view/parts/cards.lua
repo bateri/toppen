@@ -6,7 +6,7 @@ local kit = require("../lib/kit")
 local graph = require("./graph")
 local format = require("../lib/format")
 
-local b, S = kit.b, kit.S
+local b, u, S = kit.b, kit.u, kit.S
 
 local cards = {}
 
@@ -58,7 +58,11 @@ end
 local function card(spec, w, h)
 	local roomy = h >= ROOMY
 	local inner_w = w - 2 * PAD
+	local name = "card/" .. spec.key
+	local over = u:hovered(name)
 	local box = b.div():w(w):h(h):no_shrink():col():gap(GAP):p(PAD):rounded(8):bg("raised1"):clip()
+		:press(name):role("button"):label("Show the details of " .. spec.title)
+		:border(1, b.alpha("accent", S.open_card == spec.key and 0.9 or (over and 0.55 or 0)))
 	local lines = spec.lines
 	local used = 2 * PAD
 	local head = b.div():row():items_center():gap(8):h(HEAD):no_shrink()
@@ -123,6 +127,7 @@ local function cpu_card()
 		end
 	end
 	return {
+		key = "cpu",
 		title = "CPU",
 		side = machine.cpu,
 		big = function(size)
@@ -158,6 +163,7 @@ local function memory_card()
 		end
 	end
 	return {
+		key = "memory",
 		title = "Memory",
 		big = function(size)
 			return value_text(format.percent(share), role, size)
@@ -188,6 +194,7 @@ local function network_card()
 		end
 	end
 	return {
+		key = "network",
 		title = "Network",
 		compact = compact,
 		big = function(size)
@@ -218,7 +225,7 @@ local function disk_card()
 	if disk and #disk.volumes > 1 then
 		lines[#lines + 1] = quiet(string.format("%d volumes", #disk.volumes))
 	end
-	local spec = { title = "Disk", lines = lines }
+	local spec = { key = "disk", title = "Disk", lines = lines }
 	if volume then
 		spec.compact = dim(string.format("%s of %s · %s", format.bytes(volume.used), format.bytes(volume.total), format.percent(volume.total > 0 and volume.used / volume.total * 100 or 0)))
 	end
@@ -272,8 +279,9 @@ function cards.gauges(w)
 	local sample = S.sample
 	local value_w = w >= 420 and 168 or 118
 	local box = b.div():col():gap(2):w(w):no_shrink()
-	local function line(name, share, words)
+	local function line(name, share, words, key)
 		local row = b.div():row():items_center():gap(8):h(GAUGE):w(w):no_shrink()
+			:press("card/" .. key):role("button"):label("Show the details of " .. name)
 		row:child(b.text(name):weight(600):w(NAME_W):no_shrink())
 		if share then
 			row:child(graph.meter(share / 100, format.load_role(share), math.max(w - NAME_W - value_w - 16, 24), 6))
@@ -286,15 +294,15 @@ function cards.gauges(w)
 	if not sample then
 		return box
 	end
-	line("CPU", sample.cpu.total, string.format("%s  load %.2f", format.percent(sample.cpu.total), sample.load[1]))
+	line("CPU", sample.cpu.total, string.format("%s  load %.2f", format.percent(sample.cpu.total), sample.load[1]), "cpu")
 	local mem = sample.mem
 	local used = mem.total > 0 and mem.used / mem.total * 100 or 0
-	line("Memory", used, string.format("%s  %s", format.percent(used), format.short_bytes(mem.used)))
-	line("Network", nil, string.format("down %s · up %s", format.rate(sample.net.rx), format.rate(sample.net.tx)))
+	line("Memory", used, string.format("%s  %s", format.percent(used), format.short_bytes(mem.used)), "memory")
+	line("Network", nil, string.format("down %s · up %s", format.rate(sample.net.rx), format.rate(sample.net.tx)), "network")
 	local volume = sample.disk.volumes[1]
 	if volume then
 		local share = volume.total > 0 and volume.used / volume.total * 100 or 0
-		line("Disk", share, string.format("%s  %s", format.percent(share), volume.mount))
+		line("Disk", share, string.format("%s  %s", format.percent(share), volume.mount), "disk")
 	end
 	return box
 end

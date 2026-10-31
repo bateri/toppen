@@ -24,6 +24,8 @@ struct State {
     watchers: usize,
     interval: Duration,
     paused: bool,
+    /// A card's details are open: the source reads what costs more.
+    detail: bool,
     closed: bool,
 }
 
@@ -91,6 +93,7 @@ impl Sampler {
                 watchers: 0,
                 interval,
                 paused: false,
+                detail: false,
                 closed: false,
             }),
             changed: Condvar::new(),
@@ -131,6 +134,11 @@ impl Sampler {
     pub fn set_paused(&self, paused: bool) {
         self.shared.lock().paused = paused;
         self.shared.notify();
+    }
+
+    /// Whether a card's details are open (the sensors are read only then).
+    pub fn set_detail(&self, open: bool) {
+        self.shared.lock().detail = open;
     }
 
     /// The sample taken last, if one was.
@@ -261,6 +269,8 @@ fn run(shared: &Shared, mut source: Box<dyn Source>) {
                 break;
             }
         }
+        let detail = shared.lock().detail;
+        source.detail(detail);
         if !warm {
             // Idle for a while: the rates of the first look would be of the whole idle time.
             let _ = source.sample();
@@ -321,6 +331,39 @@ mod tests {
         let (history, interval) = watch.history();
         assert!(history.len() >= 4);
         assert_eq!(interval, TICK);
+    }
+
+    #[test]
+    fn the_sensors_are_read_only_while_a_card_is_open() {
+        let sampler = started();
+        let mut watch = sampler.watch();
+        let quiet = watch.next(&never).unwrap();
+        assert!(quiet.iter().all(|sample| sample.sensors.is_empty()));
+        sampler.set_detail(true);
+        let mut told = false;
+        for _ in 0..40 {
+            told |= watch
+                .next(&never)
+                .unwrap()
+                .iter()
+                .any(|sample| !sample.sensors.is_empty());
+            if told {
+                break;
+            }
+        }
+        assert!(told, "no sensor was told with a card open");
+        sampler.set_detail(false);
+        let mut quiet_again = false;
+        for _ in 0..40 {
+            let samples = watch.next(&never).unwrap();
+            quiet_again = samples
+                .last()
+                .is_some_and(|sample| sample.sensors.is_empty());
+            if quiet_again {
+                break;
+            }
+        }
+        assert!(quiet_again, "the sensors were read with every card shut");
     }
 
     #[test]

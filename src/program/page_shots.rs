@@ -81,5 +81,33 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     // The dialog fades in.
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "signal.png");
+
+    // The cards at length: the processor with the pointer on its graph, memory, the network.
+    let session = session_over(Fixture::small(), Duration::from_secs(1));
+    let mut page = open(&session, BIG, Some(&fonts))?;
+    page.press("1")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Processor use"))?;
+    std::thread::sleep(Duration::from_secs(3));
+    page.advance(1.0)?;
+    page.hover("graph/cpu")?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "card-cpu.png");
+    page.leave()?;
+    page.press("2")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("What it is made of")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "card-memory.png");
+    page.press("3")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Interfaces"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Light, "card-network-light.png");
+    page.press("4")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Reads and writes")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "card-disk.png");
     Ok(())
 }

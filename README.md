@@ -12,6 +12,8 @@ in the pane; any other terminal is given a summary of the machine, as `top -l 1`
 
 ![The details of a process](docs/details.png)
 
+![The processor at length](docs/card-cpu.png)
+
 ## Use
 
 ```
@@ -44,6 +46,12 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   has these and more. A process of another user is shown, and left alone unless toppen runs as root.
   A signal names the process by its id and the second it started in: if it ended meanwhile and its
   id was used again, nothing is sent.
+- Press a card (or **1** CPU, **2** memory, **3** network, **4** disk) for its details in place of the
+  table; **Esc** goes back. CPU: every processor with its own graph, frequencies and temperatures;
+  memory: what it is made of (app, wired, compressed, cached files, free) and swap; network: each
+  interface with its own graph (the arrows choose); disk: every volume and the reads and writes. Rest
+  the pointer on a graph to read what it held and how long ago; **w** (or the buttons) changes how far
+  back the graphs look: 1, 5 or 15 minutes.
 - Everything the keys do can be pressed with the mouse.
 
 The program looks at the machine only while its view is open and the updates are not paused.

@@ -49,6 +49,12 @@ How often the machine is looked at, and whether it is. Params: `interval` (secon
 `paused` (boolean), both optional. Answers what is now so: `{ "interval", "paused", "min", "max" }`.
 While paused the program looks at nothing.
 
+### `card`
+
+Which card's details the person has open, so that the program reads what costs more (the
+temperature sensors) only then. Params: `card`, one of `cpu`, `memory`, `network`, `disk`, or `null`
+for none. Answers `{ "card" }`. The sensors are in the samples that follow, within an interval.
+
 ### `view`
 
 How the process table is ordered, narrowed and folded, and which rows are in view. Every member is
@@ -162,14 +168,17 @@ Each value after it is one **sample**:
 { "kind": "sample", "at": 1761868920.5,
   "cpu":  { "total": 24.1, "cores": [20.2, 31.0], "freq": [3228, 3228] },
   "mem":  { "total": 17179869184, "used": 10100000000, "available": 7000000000,
-            "swapTotal": 4294967296, "swapUsed": 900000000, "pressure": 34.0 },
+            "swapTotal": 4294967296, "swapUsed": 900000000, "pressure": 34.0,
+            "breakdown": { "app": 5100000000, "wired": 1900000000, "compressed": 800000000,
+                           "cached": 3200000000, "free": 6100000000 } },
   "net":  { "rx": 216800, "tx": 75700, "totalRx": 43000000000, "totalTx": 6400000000,
             "interfaces": [{ "name": "en0", "rx": 210000, "tx": 68000 }] },
   "disk": { "read": 2300000, "write": 757000,
             "devices": [{ "name": "nvme0n1", "read": 2300000, "write": 757000 }],
             "volumes": [{ "name": "/dev/disk3s5", "mount": "/System/Volumes/Data", "fs": "apfs",
                          "total": 530000000000, "used": 323000000000, "percent": 61.0 }] },
-  "load": [1.19, 0.96, 0.8], "uptime": 259200 }
+  "load": [1.19, 0.96, 0.8], "uptime": 259200,
+  "sensors": [{ "name": "CPU performance cores", "celsius": 61.5 }] }
 ```
 
 - `mem.pressure` is `null` where the system does not say; `disk.read`/`write`/`devices` are zero and
@@ -179,6 +188,10 @@ Each value after it is one **sample**:
 - `disk.volumes` counts a device once however many mount points it has (BTRFS subvolumes, APFS
   volumes of a container), at most 12. **The first is the one the person's files are on.**
 - `freq` is each logical processor's frequency, 0 where the system does not say.
+- `mem.breakdown` is what memory is made of, bytes that add up to `total` (`null` where the system
+  does not say; `wired` and `compressed` are 0 where there is no such thing, as on Linux).
+- `sensors` are the temperatures, degrees Celsius, while a card's details are open (`card`); empty
+  otherwise, and where the system tells none.
 
 ### `processes`
 

@@ -7,8 +7,8 @@
 
 use super::control::{Control, Detail, Key, Person, Refused, Signal};
 use super::{
-    Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Source,
-    Volume,
+    Breakdown, Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample,
+    Sensor, Source, Volume,
 };
 
 const GIB: u64 = 1 << 30;
@@ -157,6 +157,8 @@ pub struct Fixture {
     tick: u64,
     total_rx: u64,
     total_tx: u64,
+    /// A card's details are open: the sensors are told.
+    detail: bool,
 }
 
 /// What the fixture's control was asked to do, in order.
@@ -304,6 +306,7 @@ impl Fixture {
             tick: 0,
             total_rx: 40 * GIB,
             total_tx: 6 * GIB,
+            detail: false,
         }
     }
 }
@@ -330,6 +333,10 @@ fn wave(tick: u64, period: u64, phase: u64) -> f64 {
 const BACKFILL: u64 = 120;
 
 impl Source for Fixture {
+    fn detail(&mut self, open: bool) {
+        self.detail = open;
+    }
+
     fn backfill(&mut self) -> Vec<Sample> {
         (self.tick..BACKFILL).map(|_| self.sample()).collect()
     }
@@ -388,6 +395,21 @@ impl Source for Fixture {
             pressure: shape
                 .pressure
                 .then(|| (used_share * 100.0 - 30.0).clamp(0.0, 100.0)),
+            breakdown: Some({
+                let wired = shape.memory / 12;
+                let compressed = shape.memory / 25 + (tick % 7) * 1_048_576;
+                let cached = shape.memory / 6;
+                let app = used.saturating_sub(wired + compressed);
+                Breakdown {
+                    app,
+                    wired,
+                    compressed,
+                    cached,
+                    free: shape
+                        .memory
+                        .saturating_sub(app + wired + compressed + cached),
+                }
+            }),
         };
 
         let burst = if noise(tick / 7) > 0.8 { 6.0 } else { 1.0 };
@@ -403,13 +425,18 @@ impl Source for Fixture {
             interfaces: vec![
                 Interface {
                     name: "en0".to_owned(),
-                    rx: rx * 0.97,
-                    tx: tx * 0.9,
+                    rx: rx * 0.9,
+                    tx: tx * 0.8,
                 },
                 Interface {
                     name: "en5".to_owned(),
+                    rx: rx * 0.07,
+                    tx: tx * 0.15,
+                },
+                Interface {
+                    name: "bridge100".to_owned(),
                     rx: rx * 0.03,
-                    tx: tx * 0.1,
+                    tx: tx * 0.05,
                 },
             ],
         };
@@ -458,6 +485,29 @@ impl Source for Fixture {
             ],
             uptime: 3 * 86_400 + tick,
             processes,
+            sensors: if self.detail {
+                let heat = 54.0 + 14.0 * swell + 2.0 * noise(tick + 3);
+                vec![
+                    Sensor {
+                        name: "CPU performance cores".to_owned(),
+                        celsius: heat,
+                    },
+                    Sensor {
+                        name: "CPU efficiency cores".to_owned(),
+                        celsius: heat - 9.0,
+                    },
+                    Sensor {
+                        name: "GPU".to_owned(),
+                        celsius: 41.0 + 3.0 * noise(tick + 8),
+                    },
+                    Sensor {
+                        name: "SSD".to_owned(),
+                        celsius: 36.0 + 2.0 * wave(tick, 300, 4),
+                    },
+                ]
+            } else {
+                Vec::new()
+            },
         }
     }
 }

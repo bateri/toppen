@@ -34,8 +34,10 @@ function graph.ceiling(lines, count, floor)
 end
 
 -- An area graph of `lines` (each { values =, role = }), the last `count` samples of them, between 0
--- and `ceiling`, `w` by `h` points. A line shorter than `count` starts from the right.
-function graph.area(lines, count, ceiling, w, h)
+-- and `ceiling`, `w` by `h` points. A line shorter than `count` starts from the right. `back` (a
+-- whole number of samples from the newest, or nil) marks one moment: a rule down the graph and a dot
+-- on each line, where the pointer is.
+function graph.area(lines, count, ceiling, w, h, back)
 	local paths = {}
 	-- Rules at the half and the top, quiet.
 	for _, fraction in { 0.5 } do
@@ -66,6 +68,18 @@ function graph.area(lines, count, ceiling, w, h)
 			outline:stroke(1.5, line.role)
 			paths[#paths + 1] = area
 			paths[#paths + 1] = outline
+		end
+	end
+	if back ~= nil and back >= 0 and back <= count - 1 then
+		local x = w - back * step
+		paths[#paths + 1] = b.path():move_to(x, 0):line_to(x, h):stroke(1, b.alpha("foreground", 0.45))
+		for _, line in lines do
+			local values = tail(line.values, count)
+			local value = values[#values - back]
+			if value ~= nil then
+				local y = 1 + inner - math.min(math.max(value / ceiling, 0), 1) * inner
+				paths[#paths + 1] = b.path():rect(x - 2, y - 2, 4, 4):fill(line.role)
+			end
 		end
 	end
 	return b.div():w(w):h(h):no_shrink():clip():child(b.canvas(paths):size(w, h))

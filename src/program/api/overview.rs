@@ -82,6 +82,22 @@ struct MemoryMessage {
     swap_total: u64,
     swap_used: u64,
     pressure: Option<f64>,
+    breakdown: Option<BreakdownMessage>,
+}
+
+#[derive(Serialize)]
+struct BreakdownMessage {
+    app: u64,
+    wired: u64,
+    compressed: u64,
+    cached: u64,
+    free: u64,
+}
+
+#[derive(Serialize)]
+struct SensorMessage<'a> {
+    name: &'a str,
+    celsius: f64,
 }
 
 #[derive(Serialize)]
@@ -136,6 +152,7 @@ struct SampleMessage<'a> {
     disk: DiskMessage<'a>,
     load: [f64; 3],
     uptime: u64,
+    sensors: Vec<SensorMessage<'a>>,
 }
 
 /// The volumes with the one the person's files are on first.
@@ -163,6 +180,13 @@ fn message(sample: &Sample) -> SampleMessage<'_> {
             swap_total: sample.memory.swap_total,
             swap_used: sample.memory.swap_used,
             pressure: sample.memory.pressure.map(tenth),
+            breakdown: sample.memory.breakdown.map(|parts| BreakdownMessage {
+                app: parts.app,
+                wired: parts.wired,
+                compressed: parts.compressed,
+                cached: parts.cached,
+                free: parts.free,
+            }),
         },
         net: NetworkMessage {
             rx: sample.network.rx.round(),
@@ -210,6 +234,14 @@ fn message(sample: &Sample) -> SampleMessage<'_> {
         },
         load: sample.load.map(|load| (load * 100.0).round() / 100.0),
         uptime: sample.uptime,
+        sensors: sample
+            .sensors
+            .iter()
+            .map(|sensor| SensorMessage {
+                name: &sensor.name,
+                celsius: tenth(sensor.celsius),
+            })
+            .collect(),
     }
 }
 
@@ -296,6 +328,13 @@ mod tests {
         let sample = fixture.sample();
         let value = serde_json::to_value(message(&sample)).unwrap();
         assert_eq!(value["kind"], "sample");
+        let parts = &value["mem"]["breakdown"];
+        let sum: u64 = ["app", "wired", "compressed", "cached", "free"]
+            .iter()
+            .map(|part| parts[part].as_u64().unwrap())
+            .sum();
+        assert_eq!(sum, sample.memory.total);
+        assert_eq!(value["sensors"], serde_json::json!([]));
         assert_eq!(value["cpu"]["cores"].as_array().unwrap().len(), 8);
         assert_eq!(value["mem"]["total"], sample.memory.total);
         assert!(value["net"]["totalRx"].is_u64());

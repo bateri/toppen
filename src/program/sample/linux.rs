@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use super::Device;
+use super::{Breakdown, Device};
 
 /// A sector in `/proc/diskstats` is 512 bytes whatever the device's own.
 const SECTOR: u64 = 512;
@@ -136,6 +136,45 @@ pub fn read_stat(pid: u32) -> Option<Stat> {
     parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
 }
 
+/// What memory is made of, from the text of `/proc/meminfo`: the files kept in memory (the page
+/// cache and the buffers, and what the kernel could give back of its own, less what is shared and
+/// cannot be dropped), what is free, and what programs hold, which is the rest.
+#[must_use]
+pub fn parse_meminfo(text: &str) -> Option<Breakdown> {
+    let kib = |name: &str| -> Option<u64> {
+        text.lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix(':'))
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|number| number.parse::<u64>().ok())
+            .map(|kib| kib * 1024)
+    };
+    let total = kib("MemTotal")?;
+    let free = kib("MemFree")?.min(total);
+    let shared = kib("Shmem").unwrap_or(0);
+    let cached = (kib("Cached").unwrap_or(0)
+        + kib("Buffers").unwrap_or(0)
+        + kib("SReclaimable").unwrap_or(0))
+    .saturating_sub(shared)
+    .min(total - free);
+    Some(Breakdown {
+        app: total - free - cached,
+        wired: 0,
+        compressed: 0,
+        cached,
+        free,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub fn read_meminfo() -> Option<Breakdown> {
+    parse_meminfo(&std::fs::read_to_string("/proc/meminfo").ok()?)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn read_meminfo() -> Option<Breakdown> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +258,24 @@ mod tests {
         assert_eq!(parse_pressure(text), Some(12.5));
         assert_eq!(parse_pressure(""), None);
         assert_eq!(parse_pressure("some avg60=1.0\n"), None);
+    }
+}
+
+#[cfg(test)]
+mod meminfo_tests {
+    use super::*;
+
+    #[test]
+    fn memory_is_what_programs_hold_what_is_cached_and_what_is_free() {
+        let text = "MemTotal:       16000000 kB\nMemFree:         2000000 kB\nBuffers:          500000 kB\nCached:          5000000 kB\nShmem:            500000 kB\nSReclaimable:     500000 kB\n";
+        let breakdown = parse_meminfo(text).unwrap();
+        assert_eq!(breakdown.free, 2_000_000 * 1024);
+        assert_eq!(breakdown.cached, 5_500_000 * 1024);
+        assert_eq!(breakdown.app, 8_500_000 * 1024);
+        assert_eq!(
+            breakdown.app + breakdown.cached + breakdown.free,
+            16_000_000 * 1024
+        );
+        assert!(parse_meminfo("nothing here").is_none());
     }
 }

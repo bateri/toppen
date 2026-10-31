@@ -54,6 +54,27 @@ pub struct Cpu {
     pub freq: Vec<u64>,
 }
 
+/// What memory is made of, bytes, where the system says; the parts add up to the total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Breakdown {
+    /// What programs hold.
+    pub app: u64,
+    /// What the system keeps in place and cannot give back (macOS).
+    pub wired: u64,
+    /// What the system squeezed to hold more (macOS).
+    pub compressed: u64,
+    /// Files kept in memory, which can be dropped.
+    pub cached: u64,
+    pub free: u64,
+}
+
+/// A temperature sensor, degrees Celsius.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sensor {
+    pub name: String,
+    pub celsius: f64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Memory {
     pub total: u64,
@@ -64,6 +85,7 @@ pub struct Memory {
     pub swap_used: u64,
     /// How pressed memory is, 0–100, where the system says.
     pub pressure: Option<f64>,
+    pub breakdown: Option<Breakdown>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,6 +184,8 @@ pub struct Sample {
     /// Seconds since the machine started.
     pub uptime: u64,
     pub processes: Vec<Process>,
+    /// The temperatures, while a card's details are open (`Source::detail`); none otherwise.
+    pub sensors: Vec<Sensor>,
 }
 
 /// Where measurements come from.
@@ -184,6 +208,9 @@ pub trait Source: Send {
     fn warmup(&self) -> std::time::Duration {
         std::time::Duration::ZERO
     }
+
+    /// Whether a card's details are open: what costs more to read (the sensors) is read only then.
+    fn detail(&mut self, _open: bool) {}
 }
 
 /// The volume the disk card speaks of: the one the person's files are on.

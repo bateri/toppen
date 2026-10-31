@@ -84,6 +84,22 @@ fn the_sampling_call_changes_how_often_and_refuses_what_the_program_cannot() {
 }
 
 #[test]
+fn the_card_call_names_a_card_or_none_and_refuses_what_is_no_card() {
+    let pane = Pane::new();
+    let heard = pane.ask(
+        &Script::new()
+            .call("card", json!({ "card": "network" }))
+            .call("card", json!({ "card": null }))
+            .call("card", json!({ "card": "gpu-" }))
+            .call("card", json!({ "kind": "cpu" })),
+    );
+    assert_eq!(heard[0].result()["card"], "network");
+    assert!(heard[1].result()["card"].is_null());
+    assert!(heard[2].failed("bad-params"), "{:?}", heard[2]);
+    assert!(heard[3].failed("bad-params"), "{:?}", heard[3]);
+}
+
+#[test]
 fn the_view_call_sets_the_table_and_refuses_what_it_does_not_take() {
     let pane = Pane::new();
     let heard = pane.ask(

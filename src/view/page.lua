@@ -12,6 +12,7 @@ local tab = require("./parts/table")
 local filter = require("./parts/filter")
 local detail = require("./parts/detail")
 local actions = require("./parts/actions")
+local machine = require("./parts/machine")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 
@@ -43,6 +44,16 @@ local list = {
 	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = "m", when = idle },
 	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = "o", when = idle },
 }
+for index, card in { "cpu", "memory", "network", "disk" } do
+	list[#list + 1] = {
+		id = "card_" .. card,
+		title = "Show the details of " .. machine.TITLES[card],
+		group = "Cards",
+		keys = tostring(index),
+		when = idle,
+	}
+end
+list[#list + 1] = { id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = "w", when = idle }
 for _, entry in actions.commands(on_process) do
 	list[#list + 1] = entry
 end
@@ -80,8 +91,13 @@ local function render(size, now, reduce_motion)
 	end
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	root:child(overview.view())
-	root:child(filter.view())
-	root:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(size.w)))))
+	local card = machine.view()
+	if card ~= nil then
+		root:child(card)
+	else
+		root:child(filter.view())
+		root:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(size.w)))))
+	end
 	root:child(status.view())
 	actions.view(root)
 	cmds:write(u, root)
@@ -94,6 +110,7 @@ local function command(id, near)
 	if id == "pause" then
 		act.toggle_pause()
 	elseif id == "filter" then
+		machine.close()
 		return filter.focus()
 	elseif id == "tree" then
 		tab.mode("tree")
@@ -115,6 +132,10 @@ local function command(id, near)
 		tab.mark()
 	elseif id == "subtree" then
 		tab.subtree()
+	elseif string.sub(id, 1, 5) == "card_" then
+		machine.toggle(string.sub(id, 6))
+	elseif id == "range_next" then
+		machine.next_range()
 	else
 		local reply = actions.command(id, near)
 		if reply ~= nil then
@@ -134,6 +155,9 @@ local function on_action(action)
 	local reply = tab.action(action)
 	if reply == nil then
 		reply = filter.action(action)
+	end
+	if reply == nil then
+		reply = machine.action(action)
 	end
 	if reply == nil then
 		reply = detail.action(action)
@@ -160,8 +184,13 @@ local function key(event)
 		return nil
 	end
 	local name = event.key
-	if name == "escape" and detail.state.open then
+	if name == "escape" and machine.state.open ~= nil then
+		machine.close()
+		return true
+	elseif name == "escape" and detail.state.open then
 		detail.close()
+		return true
+	elseif machine.key(event) then
 		return true
 	elseif name == "+" or name == "=" then
 		act.step_interval(-1)
@@ -181,8 +210,14 @@ local function handle(event)
 	local kind = event.type
 	if kind == "move" then
 		tab.pointer(tab.contains({ x = event.x, y = event.y }))
+		if machine.pointer(event.x, event.y) then
+			reply = b.merge(reply, true)
+		end
 	elseif kind == "leave" then
 		tab.pointer(false)
+		if machine.leave() then
+			reply = b.merge(reply, true)
+		end
 	end
 	if not taken then
 		if kind == "key" then
@@ -191,6 +226,9 @@ local function handle(event)
 			local pressed = tab.event(event)
 			if pressed == nil then
 				pressed = detail.event(event)
+			end
+			if pressed == nil then
+				pressed = machine.event(event)
 			end
 			reply = b.merge(reply, pressed)
 		end

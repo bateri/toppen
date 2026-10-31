@@ -22,3 +22,7 @@
   it), a new priority, a shell in the process's folder, and copies of its command line, id and folder,
   from keys, buttons and the row's menu. A signal is asked for first, and goes to the process that
   was named (id and start): one that ended and whose id was used again is not signalled.
+- The details of each card in place of the table: every processor with its own graph, its frequency
+  and the temperatures; what memory is made of and swap; each network interface with its graph; the
+  volumes and the reads and writes of the disks. A graph says what it held under the pointer and how
+  long ago, and spans one, five or fifteen minutes.

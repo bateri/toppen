@@ -650,3 +650,81 @@ fn the_menu_of_a_row_does_what_the_keys_do() {
     page.wait_for(WITHIN, |page| !page.says("Cancel"))
         .expect("the question is gone");
 }
+
+// --- The cards at length ----------------------------------------------------------------------------
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn each_card_opens_to_its_details_by_key_and_by_press_and_escape_goes_back() {
+    let (session, mut page) = open_small(WIDE);
+    // The processor: its processors one by one, and the temperatures the program reads for it.
+    page.press("1").expect("the CPU is asked for");
+    page.wait_for(WITHIN, |page| page.says("Processor use"))
+        .expect("the CPU is drawn at length");
+    for part in ["Processors · 8", "Temperatures"] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    wait_for_said(&mut page, "CPU performance cores");
+    assert!(!page.says("Name"), "the table stays away: {}", short(&page));
+    page.press("escape").expect("escape goes back");
+    page.wait_for(WITHIN, |page| {
+        page.says("Name") && !page.says("Processor use")
+    })
+    .expect("the table is back");
+    // Memory: what it is made of.
+    page.click("card/memory").expect("the card is pressed");
+    page.wait_for(WITHIN, |page| page.says("What it is made of"))
+        .expect("the memory is drawn at length");
+    for part in ["App", "Wired", "Compressed", "Cached files", "Free"] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    // The network: the interfaces, and a choice of one that the arrows move.
+    page.press("3").expect("the network is asked for");
+    wait_for_said(&mut page, "bridge100");
+    assert!(page.says("All interfaces"));
+    page.press("down").expect("the first interface is chosen");
+    page.click("iface/en5").expect("an interface is pressed");
+    page.advance(0.3).expect("the page settles");
+    // The chosen interface is the one the graph is titled with.
+    assert!(said(&page).contains("en5"), "{}", short(&page));
+    // The disk: its volumes.
+    page.press("4").expect("the disk is asked for");
+    wait_for_said(&mut page, "/System/Volumes/Data");
+    page.click("machine-close")
+        .expect("the way back is pressed");
+    page.wait_for(WITHIN, |page| page.says("Name"))
+        .expect("the table is back");
+    drop(session);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_graph_says_what_it_held_where_the_pointer_rests_and_how_long_ago_that_was() {
+    let (_session, mut page) = open_small(WIDE);
+    page.press("1").expect("the CPU is asked for");
+    page.wait_for(WITHIN, |page| page.says("Processor use"))
+        .expect("the CPU is drawn at length");
+    assert!(!said(&page).contains(" ago"));
+    page.hover("graph/cpu")
+        .expect("the pointer rests on the graph");
+    wait_for_said(&mut page, " ago");
+    // A longer range reaches further back.
+    page.press("w").expect("the range is stepped");
+    page.hover("graph/cpu").expect("the pointer rests again");
+    page.advance(0.3).expect("the page settles");
+    page.leave().expect("the pointer leaves");
+    page.wait_for(WITHIN, |page| !said(page).contains(" ago"))
+        .expect("the readout goes with the pointer");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_narrow_pane_draws_each_card_at_length_too() {
+    let (_session, mut page) = open_small(PANE);
+    page.click("card/memory").expect("the gauge is pressed");
+    page.wait_for(WITHIN, |page| page.says("What it is made of"))
+        .expect("the memory is drawn at length");
+    page.press("escape").expect("escape goes back");
+    page.wait_for(WITHIN, |page| page.says("Name"))
+        .expect("the table is back");
+}

@@ -4,13 +4,14 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use sysinfo::{
-    CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks, ProcessRefreshKind,
-    ProcessStatus, ProcessesToUpdate, RefreshKind, System as Sysinfo, UpdateKind, Users,
+    Components, CpuRefreshKind, DiskRefreshKind, Disks, MemoryRefreshKind, Networks,
+    ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, RefreshKind, System as Sysinfo,
+    UpdateKind, Users,
 };
 
 use super::{
-    Cpu, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Source, Volume,
-    linux, macos,
+    Cpu, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Sensor, Source,
+    Volume, linux, macos,
 };
 
 /// The volumes are listed again each so many samples: they change when a disk is mounted, and their
@@ -121,6 +122,9 @@ pub struct System {
     users: Users,
     ticks: u64,
     features: Features,
+    /// The temperature sensors, listed the first time a card's details are open.
+    components: Option<Components>,
+    detail: bool,
 }
 
 /// What a process is asked of the system at each look; its command line and its user are read once.
@@ -177,6 +181,8 @@ impl System {
             users: Users::new_with_refreshed_list(),
             ticks: 0,
             features,
+            components: None,
+            detail: false,
         };
         system.volumes = volumes_of(&mounts(&system.disks));
         // The first look at the processes has no usage to say: the next has.
@@ -188,6 +194,32 @@ impl System {
 }
 
 impl System {
+    /// The temperatures now, while a card's details are open.
+    fn sensors(&mut self) -> Vec<Sensor> {
+        if !self.detail {
+            return Vec::new();
+        }
+        match self.components.as_mut() {
+            Some(components) => components.refresh(false),
+            None => self.components = Some(Components::new_with_refreshed_list()),
+        }
+        let mut sensors: Vec<Sensor> = self
+            .components
+            .iter()
+            .flatten()
+            .filter_map(|component| {
+                let celsius = f64::from(component.temperature()?);
+                (celsius.is_finite() && celsius > 0.0 && celsius < 150.0).then(|| Sensor {
+                    name: component.label().to_owned(),
+                    celsius,
+                })
+            })
+            .collect();
+        sensors.sort_by(|a, b| a.name.cmp(&b.name));
+        sensors.truncate(24);
+        sensors
+    }
+
     /// The processes now, with what each did since the look before (`seconds` ago).
     fn processes(&mut self, seconds: f64) -> Vec<Process> {
         self.sys
@@ -311,6 +343,10 @@ impl Source for System {
         }
     }
 
+    fn detail(&mut self, open: bool) {
+        self.detail = open;
+    }
+
     fn warmup(&self) -> Duration {
         // sysinfo's own floor for a CPU usage that means anything.
         sysinfo::MINIMUM_CPU_UPDATE_INTERVAL.max(Duration::from_millis(250))
@@ -349,6 +385,8 @@ impl Source for System {
             } else {
                 None
             },
+            breakdown: macos::memory_breakdown(self.sys.total_memory())
+                .or_else(linux::read_meminfo),
         };
 
         let mut interfaces: Vec<Interface> = Vec::new();
@@ -423,6 +461,7 @@ impl Source for System {
             load: [load.one, load.five, load.fifteen],
             uptime: Sysinfo::uptime(),
             processes,
+            sensors: self.sensors(),
         }
     }
 }

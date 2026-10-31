@@ -26,8 +26,14 @@ local S = {
 	interval = 1,
 	paused = false,
 	-- What the machine did lately, each series newest last (`overview`), and the sample last told.
-	series = { cpu = {}, mem = {}, swap = {}, rx = {}, tx = {}, read = {}, write = {} },
+	series = { at = {}, cpu = {}, mem = {}, swap = {}, rx = {}, tx = {}, read = {}, write = {} },
+	-- Each logical processor's share, one series each; and the network's by interface name.
+	cores = {},
+	ifaces = {},
+	iface_count = 0,
 	sample = nil,
+	-- The card of the overview whose details are open, if one is.
+	open_card = nil,
 	-- Calls out that the person waits on: a quiet spinner.
 	busy = 0,
 	-- The processes the person marked, by pid (Phase 3 acts on them).

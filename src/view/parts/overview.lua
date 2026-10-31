@@ -25,10 +25,44 @@ local function history(told)
 	series.cpu, series.mem, series.swap = told.cpu, told.mem, told.swap
 	series.rx, series.tx = told.rx, told.tx
 	series.read, series.write = told.read, told.write
+	series.at = told.at
+	-- Each logical processor's own series, from the columns of samples.
+	S.cores = {}
+	for _, row in told.cores do
+		for index, value in row do
+			local list = S.cores[index]
+			if list == nil then
+				list = {}
+				S.cores[index] = list
+			end
+			list[#list + 1] = value
+		end
+	end
 	while #series.cpu > SIZE.kept do
 		for _, list in series do
 			table.remove(list, 1)
 		end
+		for _, list in S.cores do
+			table.remove(list, 1)
+		end
+	end
+end
+
+-- The series of each interface the machine has carried something on: what it did at each sample,
+-- nothing where it was quiet.
+local function interfaces(told)
+	local seen = {}
+	for _, one in told.net.interfaces do
+		seen[one.name] = one
+		if S.ifaces[one.name] == nil and S.iface_count < 24 then
+			S.iface_count += 1
+			S.ifaces[one.name] = { rx = {}, tx = {} }
+		end
+	end
+	for name, lists in S.ifaces do
+		local one = seen[name]
+		push(lists.rx, one and one.rx or 0)
+		push(lists.tx, one and one.tx or 0)
 	end
 end
 
@@ -43,6 +77,16 @@ local function sampled(told)
 	push(series.tx, told.net.tx)
 	push(series.read, told.disk.read)
 	push(series.write, told.disk.write)
+	push(series.at, told.at)
+	for index, value in told.cpu.cores do
+		local list = S.cores[index]
+		if list == nil then
+			list = {}
+			S.cores[index] = list
+		end
+		push(list, value)
+	end
+	interfaces(told)
 end
 
 -- Listens to the `overview` topic.
