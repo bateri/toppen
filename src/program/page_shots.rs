@@ -128,6 +128,39 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(1.0)?;
     save(&page, &fonts, Palette::Light, "card-gpu-two.png");
 
+    // The palette, the keys and the settings.
+    let session = session_over(Fixture::small(), Duration::from_secs(1));
+    let mut page = open(&session, BIG, Some(&fonts))?;
+    page.press("cmd+k")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Show the process tree")
+    })?;
+    page.type_text("sort")?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "palette.png");
+    page.press("escape")?;
+    page.advance(0.3)?;
+    page.press("?")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Keys and commands")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Light, "help.png");
+    page.press("escape")?;
+    page.advance(0.3)?;
+    page.press("f2")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Settings"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "settings.png");
+
+    // The palette and the settings in an 80x24 pane, in the light theme.
+    let session = session_over(Fixture::small(), Duration::from_secs(1));
+    let mut page = open(&session, PANE, Some(&fonts))?;
+    page.press("f2")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Settings"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Light, "settings-80x24.png");
+
     // The ports.
     let session = session_over(Fixture::small(), Duration::from_secs(1));
     let mut page = open(&session, BIG, Some(&fonts))?;

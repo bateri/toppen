@@ -26,6 +26,7 @@ mod page_tests;
 mod sample;
 mod sampler;
 mod session;
+mod state;
 mod text;
 
 use std::process::ExitCode;
@@ -40,6 +41,7 @@ use sample::ports::{Ports, SystemPorts};
 use sample::system::System;
 use sampler::Sampler;
 use session::Session;
+use state::settings::{Settings, Store, config_dir};
 use text::summary::Summary;
 
 /// The words under the summary of a terminal that shows no views.
@@ -72,17 +74,26 @@ fn source() -> Result<Parts, String> {
 
 /// The summary of the machine now: text, or JSON, with `note` under the text.
 fn summary(json: bool, note: Option<&str>) -> Result<String, String> {
-    let (mut source, _, _) = source()?;
+    let (mut source, control, _) = source()?;
     // The first look primes the rates; the second is the one that says something.
     let machine = source.machine();
     let _ = source.sample();
     std::thread::sleep(source.warmup());
-    let summary = Summary::of(&machine, &source.sample());
+    let mut summary = Summary::of(&machine, &source.sample());
+    // The person who asked for their names to be left out of what is shown.
+    if settings().privacy {
+        summary.keep_private(&control.person().name);
+    }
     Ok(if json {
         summary.json() + "\n"
     } else {
         summary.text(note)
     })
+}
+
+/// The person's settings file, as far as the summary needs it (a file that is broken says nothing).
+fn settings() -> Settings {
+    config_dir().map_or_else(Settings::default, |dir| Store::open(&dir).get())
 }
 
 /// What `serve` is given: the app, its name and icons, the calls and the topics of `api/`, and the
@@ -147,12 +158,29 @@ fn main() -> ExitCode {
         }
     };
     let view = ViewControl::new();
-    let session = Arc::new(Session::new(
-        Sampler::start(source, line.interval),
-        control,
-        ports,
-        view.clone(),
-    ));
+    let store = config_dir().map_or_else(
+        || Store::memory(Settings::default()),
+        |dir| Store::open(&dir),
+    );
+    // The command line is stronger than the file.
+    let interval = if line.interval_asked {
+        line.interval
+    } else {
+        store
+            .get()
+            .interval
+            .and_then(command_line::interval_of)
+            .unwrap_or(line.interval)
+    };
+    let session = Arc::new(
+        Session::new(
+            Sampler::start(source, interval),
+            control,
+            ports,
+            view.clone(),
+        )
+        .with_settings(store),
+    );
     let fallen_back = Arc::new(Mutex::new(None));
     let outcome = pencere::serve(options(&session, &fallen_back).control(view));
     let status = match outcome {

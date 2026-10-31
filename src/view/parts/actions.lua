@@ -10,6 +10,7 @@ local kit = require("../lib/kit")
 local tab = require("./table")
 local filter = require("./filter")
 local detail = require("./detail")
+local commands = require("./commands")
 
 local b, u, S, act, lib = kit.b, kit.u, kit.S, kit.act, kit.lib
 
@@ -21,42 +22,11 @@ local R = { dialog = nil }
 
 S.toasts = {}
 
--- The signals the menu offers, in the order of how often they are wanted. `id` is the command.
-local SIGNALS = {
-	{ word = "TERM", id = "signal_term", title = "End it (TERM)", about = "asks it to end; most programs save their work and quit" },
-	{ word = "INT", id = "signal_int", title = "Interrupt it (INT)", about = "does what Control-C does" },
-	{ word = "HUP", id = "signal_hup", title = "Hang it up (HUP)", about = "tells it that its terminal is gone; many programs read their settings again" },
-	{ word = "KILL", id = "signal_kill", title = "Kill it (KILL)", about = "ends it at once; it cannot save anything or clean up after itself" },
-	{ word = "STOP", id = "signal_stop", title = "Stop it (STOP)", about = "freezes it until it is continued" },
-	{ word = "CONT", id = "signal_cont", title = "Continue it (CONT)", about = "lets a stopped process run again" },
-	{ word = "USR1", id = "signal_usr1", title = "Send USR1", about = "is a signal programs give a meaning of their own; one that has none ends" },
-	{ word = "USR2", id = "signal_usr2", title = "Send USR2", about = "is a signal programs give a meaning of their own; one that has none ends" },
-}
+local SIGNALS = commands.SIGNALS
 local BY_ID, BY_WORD = {}, {}
 for _, signal in SIGNALS do
 	BY_ID[signal.id] = signal
 	BY_WORD[signal.word] = signal
-end
-
--- The commands of this file for the page's list: the keys are the few that are wanted often, the rest
--- are in the menus (the key `.` opens the row's) and, with the palette, in it.
-function actions.commands(when)
-	local list = {
-		{ id = "detail", title = "Show or hide the details of the process", group = "Process", keys = "i", when = when },
-		{ id = "row_menu", title = "Open the menu of the process", group = "Process", keys = ".", when = when },
-		{ id = "signal", title = "Send a signal to the process…", group = "Process", keys = "k", when = when },
-		{ id = "renice", title = "Change the priority of the process…", group = "Process", keys = "n", when = when },
-		{ id = "shell", title = "Open a shell in the folder of the process", group = "Process", keys = "s", when = when },
-		{ id = "copy_command", title = "Copy the command line", group = "Process", keys = "c", when = when },
-		{ id = "copy_pid", title = "Copy the process id", group = "Process", when = when },
-		{ id = "copy_cwd", title = "Copy the working folder", group = "Process", when = when },
-		{ id = "filter_user", title = "Show only the processes of this user", group = "Table", when = when },
-		{ id = "filter_name", title = "Show only the processes of this name", group = "Table", when = when },
-	}
-	for _, signal in SIGNALS do
-		list[#list + 1] = { id = signal.id, title = signal.title .. "…", group = "Process", when = when }
-	end
-	return list
 end
 
 -- --- Toasts ----------------------------------------------------------------------------------------------------
@@ -77,7 +47,7 @@ local function target_of(needs_rights)
 		return nil
 	end
 	if needs_rights and not target.mine then
-		toast(string.format("%s belongs to %s: that takes root.", target.name, target.user), "warn")
+		toast(string.format("%s belongs to %s: that takes root.", target.name, kit.user_shown(target.user)), "warn")
 		return nil
 	end
 	if needs_rights and target.ended then
@@ -135,7 +105,7 @@ local function report_signal(result, target, word, tree)
 	elseif outcome == "gone" then
 		toast(string.format("%s had already ended. Nothing was sent.", who(target)), "warn")
 	elseif outcome == "denied" then
-		toast(string.format("The system did not allow it: %s belongs to %s.", who(target), target.user), "bad")
+		toast(string.format("The system did not allow it: %s belongs to %s.", who(target), kit.user_shown(target.user)), "bad")
 	else
 		toast(string.format("%s could not be signalled: %s", who(target), result.message or "the system said no."), "bad")
 	end
@@ -164,7 +134,7 @@ local function set_nice(target, nice)
 			if nice < target.nice then
 				toast("A priority higher than it has takes root.", "bad")
 			else
-				toast(string.format("The system did not allow it: %s belongs to %s.", who(target), target.user), "bad")
+				toast(string.format("The system did not allow it: %s belongs to %s.", who(target), kit.user_shown(target.user)), "bad")
 			end
 		else
 			toast(string.format("The priority could not be changed: %s", result.message or "the system said no."), "bad")
@@ -287,28 +257,28 @@ function actions.row_menu(row, at)
 		entries[#entries + 1] = { key = key, title = title, keys = keys, enabled = enabled ~= false }
 	end
 	local shown = detail.state.open and detail.state.key ~= nil and detail.state.key.pid == row.pid and detail.state.key.start == row.start
-	add("detail", shown and "Hide the details" or "Show the details", "i")
+	add("detail", shown and "Hide the details" or "Show the details", commands.first("detail"))
 	entries[#entries + 1] = "-"
 	add("signal_term", "End it (TERM)", nil, mine)
 	add("signal_kill", "Kill it (KILL)", nil, mine)
 	add("signal_stop", "Stop it (STOP)", nil, mine)
 	add("signal_cont", "Continue it (CONT)", nil, mine)
-	add("signal", "More signals…", "k", mine)
-	add("renice", "Change the priority…", "n", mine)
+	add("signal", "More signals…", commands.first("signal"), mine)
+	add("renice", "Change the priority…", commands.first("renice"), mine)
 	entries[#entries + 1] = "-"
-	add("copy_command", "Copy the command line", "c")
+	add("copy_command", "Copy the command line", commands.first("copy_command"))
 	add("copy_pid", "Copy the process id")
 	add("copy_cwd", "Copy the working folder")
 	entries[#entries + 1] = "-"
-	add("filter_user", "Show only " .. row.user, nil)
+	add("filter_user", "Show only " .. kit.user_shown(row.user), nil)
 	add("filter_name", "Show only " .. row.name, nil)
-	add("subtree", tab.state.view.root ~= nil and "Show every process" or "Only this process and its children", "o")
-	add("mark", S.marks[row.pid] and "Unmark" or "Mark", "m")
+	add("subtree", tab.state.view.root ~= nil and "Show every process" or "Only this process and its children", commands.first("subtree"))
+	add("mark", S.marks[row.pid] and "Unmark" or "Mark", commands.first("mark"))
 	if row.children > 0 then
-		add("fold", (row.folded and "Open" or "Fold") .. " the branch", "f")
+		add("fold", (row.folded and "Open" or "Fold") .. " the branch", commands.first("fold"))
 	end
 	entries[#entries + 1] = "-"
-	add("shell", "Open a shell in its folder", "s")
+	add("shell", "Open a shell in its folder", commands.first("shell"))
 	return u:menu("row-menu", entries, { at = at })
 end
 
@@ -320,7 +290,7 @@ local function signal_dialog(d)
 	local target, word = d.target, d.word
 	local signal = BY_WORD[word]
 	local title = word == "KILL" and string.format("Kill %s?", target.name) or string.format("Send %s to %s?", word, target.name)
-	local message = string.format("Process %d of %s:\n%s\n\n%s %s.", target.pid, target.user, target.command, word, signal.about)
+	local message = string.format("Process %d of %s:\n%s\n\n%s %s.", target.pid, kit.user_shown(target.user), target.command, word, signal.about)
 	local list = { { key = "cancel", title = "Cancel" } }
 	if target.children == nil or target.children > 0 then
 		local below = target.children and string.format("the %d below it", target.children) or "everything below it"

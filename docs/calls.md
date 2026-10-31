@@ -30,7 +30,9 @@ What the page needs before it draws, once. Params: none.
     "memory": 34359738368, "booted": 1761600000
   },
   "features": { "pressure": true, "diskIo": true, "gpu": true },
-  "sampling": { "interval": 1.0, "paused": false, "min": 0.5, "max": 10.0 }
+  "sampling": { "interval": 1.0, "paused": false, "min": 0.5, "max": 10.0 },
+  "settings": { "values": { "privacy": false, "keys": { "pause": ["p"] } },
+                "path": "/Users/lantern/.config/toppen/settings.json", "error": null }
 }
 ```
 
@@ -44,6 +46,29 @@ it, not with a zero.
 - `diskIo`: reads and writes of the disks, in bytes a second.
 - `gpu`: at least one graphics processor that says how busy it is (Apple's accelerators, the DRM
   drivers of Linux, NVIDIA's driver). Without it there is no GPU card and no GPU in the samples.
+
+`settings` is the person's file (`~/.config/toppen/settings.json`, or `$XDG_CONFIG_HOME/toppen/`,
+or `$TOPPEN_CONFIG_DIR/`): `values` are its members that are set (see `settings` below), `path` is
+the file (`null` where there is none), `error` says why a file that could not be used was not (it is
+left as it is, the defaults are in force, and nothing is written over it until it is fixed).
+
+### `settings`
+
+Changes the settings and writes the file (atomically). Params: `set`, an object: each member replaces
+that setting, `null` takes it back to its default. Answers what `boot`'s `settings` is now. Fails
+`bad-params` with the reason where a value is not valid (nothing is changed) or the file is broken.
+
+| member | value |
+|--------|-------|
+| `interval` | seconds, 0.5 to 10; the command line's `--interval` is stronger |
+| `sort`, `descending` | the column the table starts ordered by, and whether the largest is first |
+| `mode` | `"flat"`, `"tree"` or `"group"` |
+| `hidden` | the columns not shown, a list of column keys |
+| `details` | whether the panel of a process is open at the start |
+| `privacy` | the machine's name and the person's own are not shown (the summary too) |
+| `keys` | `{ "<command id>": ["<keys>", …] }`: replaces the keys the command has; `[]` leaves it with none |
+
+Members this version does not know are kept as they are when the file is written.
 
 ### `sampling`
 

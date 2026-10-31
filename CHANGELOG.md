@@ -34,3 +34,10 @@
   of each GPU over time, its memory, the parts of it that are busy and its temperature. Apple's
   accelerators, the DRM drivers of Linux and NVIDIA's driver are read; the disk's reads and writes
   are read on a Mac as well (the storage drivers), and the summary lists the GPUs.
+- A palette (Cmd+K) that finds any command that can be done now and filters the table by what is
+  typed, a list of every command with its keys (`?`), and htop's function keys as second keys.
+- Settings (`~/.config/toppen/settings.json`, and a window for them): the update interval, how the
+  table starts, whether names are shown, and the keys of every command, changed by pressing them.
+  A key that the terminal, the table or another command has is refused with the reason; a file that
+  cannot be read is left as it is.
+

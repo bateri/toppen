@@ -14,60 +14,42 @@ local detail = require("./parts/detail")
 local actions = require("./parts/actions")
 local machine = require("./parts/machine")
 local ports = require("./parts/ports")
+local commands = require("./parts/commands")
+local help = require("./parts/help")
+local palette = require("./parts/palette")
+local settings = require("./parts/settings")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 
 -- --- The commands --------------------------------------------------------------------------------------------
 --
--- What can be done, once: the keys, the host's list, and (later) the palette and the help are made of
--- it. A key with a letter is the page's only while the keyboard is not in a field.
+-- What can be done, once (parts/commands.lua): the keys, the host's list, the palette, the help and
+-- the status line are made of it. A key with a letter is the page's only while the keyboard is not
+-- in a field. The conditions are named in the table and given here.
 
-local function idle()
-	return u.holder == "page"
-end
-
--- A command about a process: the keyboard is not in a field, and there is a process to be about.
-local function on_process()
-	return u.holder == "page" and detail.target() ~= nil
-end
-
-local list = {
-	{ id = "pause", title = "Pause or resume updates", group = "Updates", keys = "space", when = idle },
-	{ id = "filter", title = "Filter processes", group = "Table", keys = "/", when = idle },
-	{ id = "tree", title = "Show the process tree", group = "Table", keys = "t", when = idle },
-	{ id = "group", title = "Group processes by name", group = "Table", keys = "g", when = idle },
-	{ id = "fold", title = "Fold or open the branch", group = "Table", keys = "f", when = idle },
-	{ id = "fold_all", title = "Fold every branch", group = "Table", keys = "[", when = idle },
-	{ id = "open_all", title = "Open every branch", group = "Table", keys = "]", when = idle },
-	{ id = "sort_next", title = "Sort by the next column", group = "Table", keys = ">", when = idle },
-	{ id = "sort_prev", title = "Sort by the previous column", group = "Table", keys = "<", when = idle },
-	{ id = "reverse", title = "Reverse the order", group = "Table", keys = "r", when = idle },
-	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = "m", when = idle },
-	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = "o", when = idle },
+commands.when = {
+	idle = function()
+		return u.holder == "page"
+	end,
+	-- A command about a process: the keyboard is not in a field, and there is a process to be about.
+	process = function()
+		return u.holder == "page" and detail.target() ~= nil
+	end,
+	ports = function()
+		return u.holder == "page" and ports.state.open
+	end,
+	-- The GPU's card is there only where the machine has a GPU.
+	gpu = function()
+		return u.holder == "page" and S.boot ~= nil and S.boot.features.gpu
+	end,
 }
-for index, card in machine.CARDS do
-	list[#list + 1] = {
-		id = "card_" .. card,
-		title = "Show the details of " .. machine.TITLES[card],
-		group = "Cards",
-		keys = tostring(index),
-		-- The GPU's card is there only where the machine has a GPU.
-		when = function()
-			return idle() and (card ~= "gpu" or (S.boot ~= nil and S.boot.features.gpu))
-		end,
-	}
+
+local cmds = lib.commands(commands.for_library())
+
+-- The keys changed (the settings): the host is told the commands as they are now.
+act.keys_changed = function()
+	cmds = lib.commands(commands.for_library())
 end
-list[#list + 1] = { id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = "w", when = idle }
-local function in_ports()
-	return u.holder == "page" and ports.state.open
-end
-for _, entry in ports.commands(idle, in_ports) do
-	list[#list + 1] = entry
-end
-for _, entry in actions.commands(on_process) do
-	list[#list + 1] = entry
-end
-local cmds = lib.commands(list)
 
 -- --- The page -----------------------------------------------------------------------------------------------------
 
@@ -112,6 +94,9 @@ local function render(size, now, reduce_motion)
 	end
 	root:child(status.view())
 	actions.view(root)
+	help.view(root)
+	settings.view(root)
+	palette.view(root)
 	cmds:write(u, root)
 	return u:finish(root)
 end
@@ -127,6 +112,16 @@ local function command(id, near)
 			return u:focus(u:name("ports-filter", "field"))
 		end
 		return filter.focus()
+	elseif id == "interval_faster" then
+		act.step_interval(-1)
+	elseif id == "interval_slower" then
+		act.step_interval(1)
+	elseif id == "palette" then
+		palette.show()
+	elseif id == "help" then
+		help.show()
+	elseif id == "settings" then
+		settings.show()
 	elseif id == "tree" then
 		tab.mode("tree")
 	elseif id == "group" then
@@ -165,6 +160,8 @@ local function command(id, near)
 	return true
 end
 
+act.run = command
+
 -- What an action of a component comes to.
 local function on_action(action)
 	if action.from == "status" then
@@ -187,6 +184,15 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = actions.action(action)
+	end
+	if reply == nil then
+		reply = palette.action(action)
+	end
+	if reply == nil then
+		reply = help.action(action)
+	end
+	if reply == nil then
+		reply = settings.action(action)
 	end
 	if reply == nil and from == "commands" and kind == "command" then
 		reply = command(action.id)
@@ -218,17 +224,15 @@ local function key(event)
 		return true
 	elseif machine.key(event) then
 		return true
-	elseif name == "+" or name == "=" then
-		act.step_interval(-1)
-		return true
-	elseif name == "-" then
-		act.step_interval(1)
-		return true
 	end
 	return nil
 end
 
 local function handle(event)
+	-- A command waits for its key in the settings: the next key is its, whatever the key is.
+	if event.type == "key" and settings.capturing() then
+		return kit.take(settings.capture(event))
+	end
 	local reply, actions, taken = u:handle(event)
 	for _, action in actions do
 		reply = b.merge(reply, on_action(action))
@@ -270,6 +274,7 @@ kit.call("boot", {}, function(boot, err)
 		return true
 	end
 	S.boot = boot
+	settings.start(boot)
 	status.start(boot.sampling)
 	overview.start()
 	tab.start()

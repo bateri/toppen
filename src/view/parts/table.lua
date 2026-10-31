@@ -6,6 +6,7 @@
 local kit = require("../lib/kit")
 local format = require("../lib/format")
 local graph = require("./graph")
+local commands = require("./commands")
 
 local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 
@@ -205,11 +206,59 @@ function tab.told(told)
 		G.cursor = { row = 1, column = 2 }
 		T.selected = ref(told.rows[1])
 		set({ selected = T.selected })
+		-- The settings ask for the panel of a process to be open from the start.
+		if S.details_at_start and act.detail_open ~= nil then
+			S.details_at_start = false
+			act.detail_open(told.rows[1])
+		end
 	end
 	if not T.focused then
 		T.focused = true
 		kit.gather(u:focus(u:name("procs", "body")))
 	end
+end
+
+-- The table as the settings keep it: how it is ordered and shown, and which columns are not.
+function tab.snapshot()
+	local hidden = {}
+	for _, column in COLUMNS do
+		if T.hidden[column.key] then
+			hidden[#hidden + 1] = column.key
+		end
+	end
+	return { sort = T.view.sort, descending = T.view.descending, mode = T.view.mode, hidden = hidden }
+end
+
+-- The table the settings ask for, before the program's first word on it.
+function tab.apply_settings(values)
+	local params = {}
+	if values.sort ~= nil and BY_KEY[values.sort] ~= nil and values.sort ~= "mark" then
+		T.view.sort = values.sort
+		params.sort = values.sort
+		T.view.descending = values.descending ~= false
+		params.descending = T.view.descending
+		G.sort = { column = T.view.sort, descending = T.view.descending }
+	end
+	if values.mode ~= nil then
+		T.view.mode = values.mode
+		params.mode = values.mode
+	end
+	if values.hidden ~= nil then
+		T.hidden = {}
+		for _, key in values.hidden do
+			if BY_KEY[key] ~= nil and not BY_KEY[key].fixed then
+				T.hidden[key] = true
+			end
+		end
+	end
+	if next(params) ~= nil then
+		set(params)
+	end
+end
+
+-- The columns the table can show, for the settings.
+function tab.columns()
+	return COLUMNS
 end
 
 function tab.start()
@@ -327,7 +376,7 @@ local function cell(place, column)
 	elseif key == "pid" then
 		return words_of(row, row.group and "" or tostring(row.pid), true)
 	elseif key == "user" then
-		return words_of(row, row.user)
+		return words_of(row, kit.user_shown(row.user))
 	elseif key == "cpu" then
 		-- The bar is a share of one processor; the colour is the share of the machine the process takes.
 		local machine = math.max(S.boot.machine.threads, 1)
@@ -591,14 +640,14 @@ local function row_menu(place, at)
 	local entries = {}
 	if row.children > 0 then
 		local what = row.group and "group" or "branch"
-		entries[#entries + 1] = { key = "fold", title = (row.folded and "Open " or "Fold ") .. what, keys = "f" }
+		entries[#entries + 1] = { key = "fold", title = (row.folded and "Open " or "Fold ") .. what, keys = commands.first("fold") }
 	end
 	if not row.group then
-		entries[#entries + 1] = { key = "mark", title = S.marks[row.pid] and "Unmark" or "Mark", keys = "m" }
+		entries[#entries + 1] = { key = "mark", title = S.marks[row.pid] and "Unmark" or "Mark", keys = commands.first("mark") }
 		entries[#entries + 1] = {
 			key = "subtree",
 			title = T.view.root ~= nil and "Show every process" or "Only this process and its children",
-			keys = "o",
+			keys = commands.first("subtree"),
 		}
 	end
 	if #entries == 0 then

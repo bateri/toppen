@@ -9,6 +9,7 @@
 local kit = require("../lib/kit")
 local format = require("../lib/format")
 local graph = require("./graph")
+local commands = require("./commands")
 local tab = require("./table")
 
 local b, u, S, act = kit.b, kit.u, kit.S, kit.act
@@ -334,13 +335,13 @@ local function buttons(target)
 	local row = b.div():row():wrap():gap(6)
 	local why = nil
 	if target ~= nil and not target.mine then
-		why = string.format("Needs root: this process belongs to %s", target.user ~= "" and target.user or "someone else")
+		why = string.format("Needs root: this process belongs to %s", target.user ~= "" and kit.user_shown(target.user) or "someone else")
 	end
 	local gone = D.ended
-	row:child(u:button("do-signal", { title = "Signal…", keys = "k", disabled = why ~= nil or gone, tip = why }))
-	row:child(u:button("do-renice", { title = "Priority…", keys = "n", disabled = why ~= nil or gone, tip = why }))
-	row:child(u:button("do-shell", { title = "Shell here", keys = "s", disabled = gone }))
-	row:child(u:button("do-copy_command", { title = "Copy command", keys = "c" }))
+	row:child(u:button("do-signal", { title = "Signal…", keys = commands.first("signal"), disabled = why ~= nil or gone, tip = why }))
+	row:child(u:button("do-renice", { title = "Priority…", keys = commands.first("renice"), disabled = why ~= nil or gone, tip = why }))
+	row:child(u:button("do-shell", { title = "Shell here", keys = commands.first("shell"), disabled = gone }))
+	row:child(u:button("do-copy_command", { title = "Copy command", keys = commands.first("copy_command") }))
 	return row
 end
 
@@ -365,7 +366,7 @@ local function panel()
 		head:child(u:badge("Zombie", { tone = "bad" }))
 	end
 	head:child(b.spacer())
-	head:child(u:icon_button("detail-close", { icon = "close", label = "Close the details", keys = "i" }))
+	head:child(u:icon_button("detail-close", { icon = "close", label = "Close the details", keys = commands.first("detail") }))
 	top:child(head)
 	local root = b.div():size_full():col():min_h(0):child(top)
 
@@ -381,7 +382,7 @@ local function panel()
 
 	-- Who it is.
 	local state = live and live.state or info.state
-	local meta = string.format("pid %d · %s · %s", info.pid, info.user, STATES[state] or state)
+	local meta = string.format("pid %d · %s · %s", info.pid, kit.user_shown(info.user), STATES[state] or state)
 	if live and live.at and info.start > 0 and live.at > info.start then
 		meta = meta .. " · started " .. format.duration(live.at - info.start) .. " ago"
 	end

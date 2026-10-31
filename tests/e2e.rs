@@ -84,6 +84,85 @@ fn the_sampling_call_changes_how_often_and_refuses_what_the_program_cannot() {
 }
 
 #[test]
+fn the_settings_call_writes_the_file_refuses_what_is_not_valid_and_the_next_run_reads_it() {
+    let pane = Pane::new();
+    let heard = pane.ask(
+        &Script::new()
+            .call(
+                "settings",
+                json!({ "set": { "privacy": true, "keys": { "pause": ["p"] } } }),
+            )
+            .call("settings", json!({ "set": { "interval": 99 } }))
+            .call("settings", json!({ "set": { "mode": "sideways" } }))
+            .call("boot", json!({})),
+    );
+    assert_eq!(heard[0].result()["values"]["privacy"], true);
+    assert!(heard[1].failed("bad-params"), "{:?}", heard[1]);
+    assert!(heard[1].message().contains("0.5 to 10"));
+    assert!(heard[2].failed("bad-params"), "{:?}", heard[2]);
+    assert_eq!(
+        heard[3].result()["settings"]["values"]["keys"]["pause"][0],
+        "p"
+    );
+    let file = std::fs::read_to_string(pane.path("config/toppen/settings.json")).expect("a file");
+    assert!(file.contains("\"privacy\": true"), "{file}");
+    // The next run starts from it: the boot says so, and the summary leaves the names out.
+    let heard = pane.ask(&Script::new().call("boot", json!({})));
+    assert_eq!(heard[0].result()["settings"]["values"]["privacy"], true);
+    assert!(heard[0].result()["settings"]["error"].is_null());
+    let mut command = pane.command(program());
+    command.arg("--once").env_remove("TOPPEN_FIXTURE");
+    let ran = run(command, None, Duration::from_secs(20));
+    assert!(
+        ran.stdout.starts_with("toppen on this machine"),
+        "{}",
+        ran.stdout
+    );
+}
+
+#[test]
+fn the_interval_of_the_settings_is_the_start_and_the_command_line_is_stronger() {
+    let pane = Pane::new();
+    std::fs::create_dir_all(pane.path("config/toppen")).expect("a folder");
+    std::fs::write(
+        pane.path("config/toppen/settings.json"),
+        "{ \"interval\": 2.0 }",
+    )
+    .expect("the file");
+    let heard = pane.ask(&Script::new().call("boot", json!({})));
+    assert_eq!(heard[0].result()["sampling"]["interval"], 2.0);
+    let heard = pane.ask(
+        &Script::new()
+            .call("boot", json!({}))
+            .args(&["--interval", "5"]),
+    );
+    assert_eq!(heard[0].result()["sampling"]["interval"], 5.0);
+}
+
+#[test]
+fn a_broken_settings_file_is_told_by_the_boot_and_stays_as_it_is() {
+    let pane = Pane::new();
+    std::fs::create_dir_all(pane.path("config/toppen")).expect("a folder");
+    std::fs::write(pane.path("config/toppen/settings.json"), "{ nope").expect("the file");
+    let heard = pane.ask(
+        &Script::new()
+            .call("settings", json!({ "set": { "privacy": true } }))
+            .call("boot", json!({})),
+    );
+    assert!(heard[0].failed("bad-params"), "{:?}", heard[0]);
+    assert!(heard[0].message().contains("fix it or remove it"));
+    assert!(
+        heard[1].result()["settings"]["error"]
+            .as_str()
+            .is_some_and(|why| why.contains("settings.json is not used"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(pane.path("config/toppen/settings.json")).expect("the file"),
+        "{ nope"
+    );
+}
+
+#[test]
 fn the_card_call_names_a_card_or_none_and_refuses_what_is_no_card() {
     let pane = Pane::new();
     let heard = pane.ask(

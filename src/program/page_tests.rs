@@ -816,6 +816,254 @@ fn a_narrow_pane_has_a_gauge_for_the_gpu_that_opens_it() {
         .expect("the GPU is drawn at length");
 }
 
+// --- The keys, the palette, the help and the settings -------------------------------------------------
+
+/// A session over the small fixture whose settings are those of the folder `dir`.
+fn session_with_settings(dir: &std::path::Path) -> Arc<Session> {
+    let fixture = Fixture::small();
+    let control = Arc::new(fixture.control());
+    let ports = Arc::new(fixture.ports());
+    Arc::new(
+        Session::new(
+            Sampler::start(Box::new(fixture), TICK),
+            control as Arc<dyn Control>,
+            ports,
+            pencere::ViewControl::new(),
+        )
+        .with_settings(crate::state::settings::Store::open(dir)),
+    )
+}
+
+/// The settings file written for a test, and the folder it is in.
+fn settings_dir(text: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a folder");
+    std::fs::write(dir.path().join("settings.json"), text).expect("the file");
+    dir
+}
+
+fn settings_text(dir: &tempfile::TempDir) -> String {
+    std::fs::read_to_string(dir.path().join("settings.json")).unwrap_or_default()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_help_lists_the_commands_with_their_keys_and_escape_puts_it_away() {
+    let (_session, mut page) = open_small(WIDE);
+    page.press("?").expect("the help is asked for");
+    page.wait_for(WITHIN, |page| page.says("Keys and commands"))
+        .expect("the help is drawn");
+    for part in [
+        "Movement",
+        "Pause or resume updates",
+        "Show the process tree",
+        "Filter processes",
+        "Find a command or a process",
+        "Open the settings",
+    ] {
+        assert!(page.says(part), "{part}: {}", short(&page));
+    }
+    page.press("escape").expect("escape closes it");
+    page.wait_for(WITHIN, |page| !page.says("Keys and commands"))
+        .expect("the help is gone");
+    // The status line has the way to it, and the function key does the same.
+    page.click("status/item/help").expect("the item is pressed");
+    page.wait_for(WITHIN, |page| page.says("Keys and commands"))
+        .expect("the help is drawn again");
+    page.click("help-close").expect("the way out is pressed");
+    page.wait_for(WITHIN, |page| !page.says("Keys and commands"))
+        .expect("the help is gone");
+    page.advance(0.2).expect("the keyboard is given back");
+    page.press("f1").expect("the function key is pressed");
+    page.wait_for(WITHIN, |page| page.says("Keys and commands"))
+        .expect("the help is drawn by the function key");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_palette_does_a_command_and_filters_the_table_by_what_is_typed() {
+    use crate::model::processes::Mode;
+    let (session, mut page) = open_small(WIDE);
+    page.press("cmd+k").expect("the palette is asked for");
+    page.wait_for(WITHIN, |page| page.says("Show the process tree"))
+        .expect("the commands are listed");
+    // The keys of a command are in its row.
+    assert!(page.says("Pause or resume updates"), "{}", short(&page));
+    page.type_text("process tree").expect("the words are typed");
+    page.advance(0.3).expect("the page settles");
+    assert!(!page.says("Pause or resume updates"), "{}", short(&page));
+    page.press("enter").expect("the command is done");
+    page.wait_for(WITHIN, |_| session.table().view().mode == Mode::Tree)
+        .expect("the table is a tree");
+    page.advance(0.2).expect("the keyboard is given back");
+    // A name that is no command is the table's filter.
+    page.press("ctrl+k")
+        .expect("the palette is asked for again");
+    page.wait_for(WITHIN, |page| page.says("Show the process tree"))
+        .expect("the commands are listed again");
+    page.type_text("nginx").expect("a name is typed");
+    wait_for_said(&mut page, "Filter the processes by");
+    page.press("enter").expect("the filter is made");
+    page.wait_for(WITHIN, |_| session.table().view().filter == "nginx")
+        .expect("the table is filtered");
+    wait_for_said(&mut page, "nginx");
+    assert!(!page.says("Show the process tree"), "{}", short(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_key_of_the_settings_does_what_the_default_did_and_is_shown_where_keys_are() {
+    // Pause is Z; the mark's P is the ports' too, so it is not used and the page says why.
+    let dir = settings_dir(r#"{ "keys": { "pause": ["z"], "mark": ["p"] } }"#);
+    let session = session_with_settings(dir.path());
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    page.press("z").expect("the new key is pressed");
+    page.wait_for(WITHIN, |_| session.sampler.paused())
+        .expect("it paused the updates");
+    // The old key is no more the command's.
+    page.press("space").expect("the old key is pressed");
+    page.advance(0.4).expect("the page settles");
+    assert!(session.sampler.paused());
+    page.press("z").expect("the new key is pressed again");
+    page.wait_for(WITHIN, |_| !session.sampler.paused())
+        .expect("it resumed them");
+    // The help and the palette say the new key.
+    page.press("?").expect("the help is asked for");
+    page.wait_for(WITHIN, |page| page.says("Keys and commands"))
+        .expect("the help is drawn");
+    assert!(page.says("Z"), "{}", short(&page));
+    page.press("escape").expect("the help is closed");
+    page.advance(0.2).expect("the keyboard is given back");
+    // The key that is not used is told, with the reason, in the settings.
+    page.press("f2").expect("the settings are asked for");
+    page.wait_for(WITHIN, |page| page.says("Settings"))
+        .expect("the settings are drawn");
+    let said_now = said(&page);
+    assert!(
+        said_now.contains("Not used: “p” for Mark or unmark the process is used by Show or hide the listening ports."),
+        "{}",
+        short(&page)
+    );
+    // Neither the settings nor the file was changed by asking.
+    assert!(settings_text(&dir).contains(r#""pause""#));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_key_is_changed_by_pressing_it_a_taken_key_is_refused_and_the_file_is_written() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let session = session_with_settings(dir.path());
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    page.press("f2").expect("the settings are asked for");
+    page.wait_for(WITHIN, |page| page.says("Settings"))
+        .expect("the settings are drawn");
+    page.scroll_to("settings/scroll", 560.0)
+        .expect("the keys are scrolled to");
+    page.click("key-change/reverse")
+        .expect("the change of a key is pressed");
+    wait_for_said(&mut page, "Press the new key");
+    // A key the ports have is refused, with who has it, and the command goes on waiting.
+    page.press("p").expect("a taken key is pressed");
+    wait_for_said(&mut page, "is used by Show or hide the listening ports");
+    assert!(!dir.path().join("settings.json").exists());
+    page.press("x").expect("a free key is pressed");
+    page.wait_for(WITHIN, |_| settings_text(&dir).contains(r#""reverse""#))
+        .expect("the file was written");
+    let text = settings_text(&dir);
+    assert!(text.contains('x'), "{text}");
+    assert!(session.settings.get().keys.contains_key("reverse"));
+    // The key does the command, once the settings are closed.
+    page.click("settings-close")
+        .expect("the settings are closed");
+    page.wait_for(WITHIN, |page| !page.says("Settings"))
+        .expect("the settings are gone");
+    let before = session.table().view().descending;
+    page.press("x").expect("the new key is pressed");
+    page.wait_for(WITHIN, |_| session.table().view().descending != before)
+        .expect("the order was reversed");
+    // And the old one is the command's no longer.
+    let after = session.table().view().descending;
+    page.press("r").expect("the old key is pressed");
+    page.advance(0.4).expect("the page settles");
+    assert_eq!(session.table().view().descending, after);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_broken_file_is_told_once_left_where_it_is_and_nothing_is_written_over_it() {
+    let dir = settings_dir("{ \"keys\": ");
+    let session = session_with_settings(dir.path());
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    wait_for_said(&mut page, "The settings file could not be used");
+    page.press("f2").expect("the settings are asked for");
+    page.wait_for(WITHIN, |page| page.says("Settings"))
+        .expect("the settings are drawn");
+    assert!(
+        said(&page).contains("Nothing is written until it is fixed."),
+        "{}",
+        short(&page)
+    );
+    page.click("set-privacy").ok();
+    page.press("escape").expect("the settings are closed");
+    assert_eq!(settings_text(&dir), "{ \"keys\": ");
+    assert!(session.settings.get().keys.is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_settings_start_the_table_and_hide_the_names_the_person_chose_to_hide() {
+    use crate::model::processes::{Column, Mode};
+    let dir = settings_dir(
+        r#"{ "privacy": true, "sort": "memory", "descending": false, "mode": "tree",
+             "hidden": ["threads"], "details": true }"#,
+    );
+    let session = session_with_settings(dir.path());
+    let mut page = open(&session, WIDE, None).expect("the page opens");
+    page.wait_for(WITHIN, |_| {
+        let view = session.table().view();
+        view.sort == Column::Memory && !view.descending && view.mode == Mode::Tree
+    })
+    .expect("the table starts as it was left");
+    // The panel of a process is open from the start.
+    page.wait_for(WITHIN, |page| page.says("Working folder"))
+        .expect("the panel is open");
+    // The columns the person hid are not drawn.
+    assert!(!page.says("Threads"), "{}", short(&page));
+    // The machine's name and the person's own are not.
+    let leaks: Vec<&str> = page
+        .words()
+        .into_iter()
+        // A path is a path, whatever the name in it: what is hidden is the name a line says.
+        .filter(|word| word.contains("lantern") && !word.contains('/'))
+        .collect();
+    assert!(leaks.is_empty(), "{leaks:?}");
+    assert!(page.says("this machine"), "{}", short(&page));
+    assert!(said(&page).contains("you"), "{}", short(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_help_the_palette_and_the_settings_fit_a_narrow_pane() {
+    let (_session, mut page) = open_small(PANE);
+    page.press("?").expect("the help is asked for");
+    page.wait_for(WITHIN, |page| page.says("Keys and commands"))
+        .expect("the help is drawn");
+    page.press("escape").expect("the help is closed");
+    page.advance(0.2).expect("the keyboard is given back");
+    page.press("f2").expect("the settings are asked for");
+    page.wait_for(WITHIN, |page| page.says("Settings"))
+        .expect("the settings are drawn");
+    // No key of the table of commands is taken by another of it.
+    assert!(!said(&page).contains("Not used"), "{}", short(&page));
+    page.press("escape").expect("the settings are closed");
+    page.advance(0.2).expect("the keyboard is given back");
+    page.press("cmd+k").expect("the palette is asked for");
+    page.wait_for(WITHIN, |page| page.says("Show the process tree"))
+        .expect("the palette is drawn");
+    page.press("escape").expect("the palette is closed");
+    page.wait_for(WITHIN, |page| page.says("Name"))
+        .expect("the table is back");
+}
+
 // --- The listening ports ------------------------------------------------------------------------------
 
 /// A port a process of the person listens on, with that process, in the fixture machine.

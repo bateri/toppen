@@ -66,11 +66,66 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   **a** copies the address. In the table, `port:3000` leaves the processes that listen there. Where the
   system does not let you look into a process (another user's, unless toppen runs as root) its sockets
   are listed without it, or not at all on macOS.
-- Everything the keys do can be pressed with the mouse.
+- Everything the keys do can be pressed with the mouse, and everything the mouse does has a key (or a
+  row in the palette): **Cmd+K** (or **Ctrl+K**) opens the palette, which finds any command that can
+  be done now, with its keys, and turns a name you type into a filter of the table (`:3000` into the
+  process on that port). **?** (or **F1**, or "Keys" in the status line) lists every command with the
+  keys it has now.
+- htop's keys are there as second keys: **F1** the keys, **F2** the settings, **F4** the filter,
+  **F5** the tree, **F6** the next sort column, **F7** the priority, **F9** a signal.
+
+![The palette](docs/palette.png)
+
+### Settings
+
+**F2** (or **Cmd+,**) opens the settings, kept in `~/.config/toppen/settings.json`
+(`$XDG_CONFIG_HOME/toppen/`, or `$TOPPEN_CONFIG_DIR`). The window changes them; the file can be
+edited by hand:
+
+```json
+{
+  "interval": 2,
+  "sort": "memory", "descending": true, "mode": "tree", "hidden": ["threads"],
+  "details": false,
+  "privacy": false,
+  "keys": { "pause": ["p"], "mark": ["x", "f3"], "fold_all": [] }
+}
+```
+
+- `interval` is how often the machine is looked at (`--interval` is stronger); `sort`, `descending`,
+  `mode` and `hidden` (columns) are how the table starts, and "Start the table like this" in the
+  window writes the table as it is now; `details` opens the panel of a process at the start;
+  `privacy` leaves out the machine's name and your own (the summary too).
+- `keys` gives a command other keys than its own, by the id the help and the palette's rows share
+  with the file (`pause`, `tree`, `signal`, `card_gpu`, ...). In the window, press **Change** and then
+  the key; **Backspace** takes a command's keys away, **Reset** gives them back. A key is refused,
+  with the reason, when it is not a key, when the table, the fields and the dialogs have it (the
+  arrows, Enter, Esc, Tab, Home, End), when the terminal's own shortcuts have it (Cmd+P, Cmd+W, Cmd+1
+  to 9 ...), when it is Option and a letter, or when another command has it.
+- A file that cannot be read is left exactly where it is: toppen starts with the defaults, says so
+  once, and writes nothing over it until it is fixed or removed.
+
+![The settings](docs/settings.png)
+
+![The keys](docs/help.png)
 
 The program looks at the machine only while its view is open and the updates are not paused.
 
-## Build
+## How it works
+
+The program (Rust, on the `pencere` crate) looks at the machine with `sysinfo` and, where that does
+not say it, the system's own interfaces (Mach and libproc and the I/O registry on macOS, `/proc`,
+`/sys/class/drm` and NVIDIA's library on Linux). It keeps what it saw, and the model of the table
+(order, filter, tree, groups, folds, history) is its own: the page tells it how the table is to be and
+is sent only the rows in view, so a machine with thousands of processes costs the page nothing. The page
+(Lua, on pencere's kit) draws and takes the keys and the pointer; it talks to the program only by the
+calls and topics of `docs/calls.md`. A signal names its process by id and start time, and the program
+reads the start again right before it sends: a process that ended and whose id was used again is not
+signalled.
+
+In a terminal that does not host pencere views, the same program prints the summary of the machine.
+
+## Work on it
 
 ```
 make fake-host   # once: the stand-in terminal the tests run toppen in (fetches pencere)

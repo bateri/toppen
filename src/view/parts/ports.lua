@@ -8,6 +8,7 @@ local format = require("../lib/format")
 local filter = require("./filter")
 local detail = require("./detail")
 local actions = require("./actions")
+local commands = require("./commands")
 
 local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 
@@ -214,7 +215,7 @@ local function cell(place, column)
 		end
 		return row.name
 	elseif key == "user" then
-		return row.user or ""
+		return row.user ~= nil and kit.user_shown(row.user) or ""
 	elseif key == "command" then
 		return b.text(row.command or ""):color("dim"):truncate():min_w(0)
 	end
@@ -377,9 +378,9 @@ local function row_menu(place, at)
 		"-",
 		{ key = "signal_term", title = "End it (TERM)", enabled = owned },
 		{ key = "signal_kill", title = "Kill it (KILL)", enabled = owned },
-		{ key = "signal", title = "More signals…", keys = "k", enabled = owned },
+		{ key = "signal", title = "More signals…", keys = commands.first("signal"), enabled = owned },
 		"-",
-		{ key = "copy_address", title = "Copy the address", keys = "a" },
+		{ key = "copy_address", title = "Copy the address", keys = commands.first("copy_address") },
 		{ key = "copy_port", title = "Copy the port" },
 	}
 	return u:menu("ports-menu", entries, { at = at })
@@ -430,15 +431,6 @@ function ports.action(action)
 end
 
 -- The commands of the view for the page's list.
-function ports.commands(when, in_ports)
-	return {
-		{ id = "ports", title = "Show or hide the listening ports", group = "Ports", keys = "p", when = when },
-		{ id = "port_show", title = "Show the process of the socket in the table", group = "Ports", when = in_ports },
-		{ id = "copy_address", title = "Copy the address of the socket", group = "Ports", keys = "a", when = in_ports },
-		{ id = "copy_port", title = "Copy the port of the socket", group = "Ports", when = in_ports },
-	}
-end
-
 -- Does the command `id` of this file; nil where it is not one of them.
 function ports.command(id)
 	if id == "ports" then

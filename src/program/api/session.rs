@@ -11,6 +11,7 @@ use super::{Failure, call};
 use crate::command_line::{MAX_INTERVAL, MIN_INTERVAL, interval_of};
 use crate::sample::Machine;
 use crate::session::Session;
+use crate::state::settings::Settings;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +58,23 @@ struct Boot {
     machine: MachineInfo,
     features: Features,
     sampling: Sampling,
+    settings: SettingsMessage,
+}
+
+/// The settings as the page is told them: their values, where the file is, and why it is not used.
+#[derive(Serialize)]
+struct SettingsMessage {
+    values: Settings,
+    path: Option<String>,
+    error: Option<String>,
+}
+
+fn settings_of(session: &Session) -> SettingsMessage {
+    SettingsMessage {
+        values: session.settings.get(),
+        path: session.settings.path(),
+        error: session.settings.broken(),
+    }
 }
 
 fn sampling_of(session: &Session) -> Sampling {
@@ -104,6 +122,7 @@ fn boot(session: &Session, _: NoParams) -> Result<Boot, Failure> {
             gpu: machine.features.gpu,
         },
         sampling: sampling_of(session),
+        settings: settings_of(session),
     })
 }
 
@@ -158,8 +177,65 @@ fn card(session: &Session, params: CardParams) -> Result<Card, Failure> {
     Ok(Card { card: params.card })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SettingsParams {
+    /// The settings to change: a member replaces that setting, `null` takes it back to its default.
+    set: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Changes the settings and writes them. The answer is what they are now.
+fn settings(session: &Session, params: SettingsParams) -> Result<SettingsMessage, Failure> {
+    session
+        .settings
+        .update(&params.set)
+        .map_err(Failure::BadParams)?;
+    Ok(settings_of(session))
+}
+
 pub fn calls(options: Options, session: &Arc<Session>) -> Options {
     let options = call(options, session, "boot", boot);
     let options = call(options, session, "sampling", sampling);
+    let options = call(options, session, "settings", settings);
     call(options, session, "card", card)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::page_tests::session_over;
+    use crate::sample::fixture::Fixture;
+    use crate::state::settings::Store;
+    use std::time::Duration;
+
+    fn set(value: &serde_json::Value) -> SettingsParams {
+        SettingsParams {
+            set: value.as_object().cloned().unwrap_or_default(),
+        }
+    }
+
+    #[test]
+    fn the_boot_tells_the_settings_and_a_change_is_told_back_and_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = Arc::new(
+            Arc::into_inner(session_over(Fixture::small(), Duration::from_millis(300)))
+                .unwrap()
+                .with_settings(Store::open(dir.path())),
+        );
+        let booted = serde_json::to_value(boot(&session, NoParams {}).unwrap()).unwrap();
+        assert_eq!(booted["settings"]["values"]["privacy"], false);
+        assert_eq!(booted["features"]["gpu"], true);
+        let told = settings(
+            &session,
+            set(&serde_json::json!({ "privacy": true, "keys": { "pause": ["p"] } })),
+        )
+        .unwrap();
+        assert!(told.values.privacy);
+        assert!(told.error.is_none());
+        assert!(Store::open(dir.path()).get().privacy);
+        // A value the program cannot use is `bad-params`, and changes nothing.
+        let refused = settings(&session, set(&serde_json::json!({ "interval": 99 })));
+        assert!(matches!(refused, Err(Failure::BadParams(_))));
+        assert!(session.settings.get().privacy);
+    }
 }

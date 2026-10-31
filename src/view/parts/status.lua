@@ -3,6 +3,7 @@
 
 local kit = require("../lib/kit")
 local format = require("../lib/format")
+local commands = require("./commands")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 
@@ -20,6 +21,10 @@ local function set(params)
 	kit.call("sampling", params, function(result, err)
 		if result then
 			apply(result)
+			-- What the person chose is what the next run starts with (the settings file, where it can be).
+			if params.interval ~= nil and act.save_setting ~= nil then
+				act.save_setting({ interval = result.interval }, true)
+			end
 		end
 		return true
 	end)
@@ -54,6 +59,8 @@ function status.action(action)
 	end
 	if action.key == "pause" then
 		act.toggle_pause()
+	elseif action.key == "help" then
+		act.open_help()
 	elseif action.key == "interval" then
 		-- Round the steps: slower, and from the slowest back to the fastest.
 		if S.interval >= STEPS[#STEPS] - 0.01 then
@@ -67,7 +74,7 @@ end
 
 function status.view()
 	local machine = S.boot.machine
-	local start = { { key = "host", words = machine.host, priority = 9 } }
+	local start = { { key = "host", words = kit.host_shown(machine.host), priority = 9 } }
 	if S.layout ~= "narrow" then
 		start[#start + 1] = { key = "os", words = machine.os, priority = 3 }
 	end
@@ -90,11 +97,19 @@ function status.view()
 		priority = 5,
 	}
 	finish[#finish + 1] = {
+		key = "help",
+		words = "Keys",
+		press = true,
+		tip = "Show the keys and the commands",
+		keys = commands.first("help"),
+		priority = 6,
+	}
+	finish[#finish + 1] = {
 		key = "pause",
 		words = S.paused and "Resume" or "Pause",
 		press = true,
 		tip = S.paused and "Resume updates" or "Pause updates",
-		keys = "space",
+		keys = commands.first("pause"),
 		tone = S.paused and "warn" or nil,
 		priority = 8,
 	}

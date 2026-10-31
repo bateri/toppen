@@ -22,6 +22,8 @@ local S = {
 	-- What `boot` said, and why there is none.
 	boot = nil,
 	boot_error = nil,
+	-- The settings say the machine's name and the person's own are not shown.
+	private = false,
 	-- Seconds between two samples, and whether updates are paused (`sampling`).
 	interval = 1,
 	paused = false,
@@ -105,6 +107,20 @@ local function keys_of(spec)
 	return keys.label(spec)
 end
 
+-- The name of a user as the page shows it: the person's own is "you" where the settings keep it
+-- private.
+local function user_shown(user)
+	if S.private and S.boot ~= nil and user == S.boot.person.name then
+		return "you"
+	end
+	return user
+end
+
+-- The name of the machine as the page shows it.
+local function host_shown(host)
+	return S.private and "this machine" or host
+end
+
 -- A picture turning round, for what is being waited for: the host turns it, a frame at a time.
 local function spinner(size, color)
 	return icon("loader-2", size, color):motion({ spin = 1 })
@@ -126,5 +142,7 @@ return {
 	call = call,
 	icon = icon,
 	keys_of = keys_of,
+	user_shown = user_shown,
+	host_shown = host_shown,
 	spinner = spinner,
 }

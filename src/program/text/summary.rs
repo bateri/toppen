@@ -170,6 +170,17 @@ impl Summary {
         }
     }
 
+    /// Leaves out the names of the machine and of `person`: the machine is "this machine", the
+    /// person's processes are "you".
+    pub fn keep_private(&mut self, person: &str) {
+        "this machine".clone_into(&mut self.host);
+        for process in &mut self.processes.top {
+            if process.user == person {
+                "you".clone_into(&mut process.user);
+            }
+        }
+    }
+
     /// The JSON of `--json`: one object, one line.
     #[must_use]
     pub fn json(&self) -> String {
@@ -476,6 +487,16 @@ mod tests {
         assert!(!bare.text(None).contains("GPU"));
         let json: serde_json::Value = serde_json::from_str(&bare.json()).unwrap();
         assert!(json.get("gpus").is_none());
+    }
+
+    #[test]
+    fn a_private_summary_has_neither_the_machines_name_nor_the_persons() {
+        let mut summary = summary();
+        summary.keep_private("lantern");
+        let text = summary.text(None);
+        assert!(text.starts_with("toppen on this machine"), "{text}");
+        assert!(!text.contains("lantern"), "{text}");
+        assert!(!summary.json().contains("lantern"));
     }
 
     #[test]

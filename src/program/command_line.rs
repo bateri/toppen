@@ -32,6 +32,8 @@ pub struct Line {
     /// Print the summary and end, as JSON.
     pub json: bool,
     pub interval: Duration,
+    /// The interval was asked for here, which is stronger than the settings.
+    pub interval_asked: bool,
 }
 
 /// What the command line comes to.
@@ -66,6 +68,7 @@ pub fn read(args: impl IntoIterator<Item = String>) -> Asked {
         once: false,
         json: false,
         interval: Duration::from_secs_f64(DEFAULT_INTERVAL),
+        interval_asked: false,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -81,13 +84,19 @@ pub fn read(args: impl IntoIterator<Item = String>) -> Asked {
                     return Asked::Refuse(NEEDS_SECONDS.to_owned());
                 };
                 match interval_words(&word) {
-                    Ok(interval) => line.interval = interval,
+                    Ok(interval) => {
+                        line.interval = interval;
+                        line.interval_asked = true;
+                    }
                     Err(why) => return Asked::Refuse(why),
                 }
             }
             other => match other.strip_prefix("--interval=") {
                 Some(word) => match interval_words(word) {
-                    Ok(interval) => line.interval = interval,
+                    Ok(interval) => {
+                        line.interval = interval;
+                        line.interval_asked = true;
+                    }
                     Err(why) => return Asked::Refuse(why),
                 },
                 None => {
@@ -116,7 +125,8 @@ mod tests {
             Asked::Run(Line {
                 once: false,
                 json: false,
-                interval: Duration::from_secs(1)
+                interval: Duration::from_secs(1),
+                interval_asked: false,
             })
         );
     }
@@ -128,6 +138,7 @@ mod tests {
         };
         assert!(line.once && line.json);
         assert_eq!(line.interval, Duration::from_millis(2500));
+        assert!(line.interval_asked);
         let Asked::Run(line) = read_words(&["--interval=0.5"]) else {
             panic!("a run");
         };
