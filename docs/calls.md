@@ -138,7 +138,9 @@ What a measurement does not say of one process. Params: `pid` and `start`, both 
 ```
 
 - `argv` is the command line a word each; `exe`, `cwd`, `env` and `fds` (open files) are what the
-  system tells the person to see (`null`, or an empty `env`, where it says nothing). `secret` is true
+  system tells the person to see (`null`, or an empty `env`, where it says nothing). `argv` and
+  `env` are each held to 256 KiB as sent: what does not fit is left out, and the last word or value
+  that was cut ends in `…`. `secret` is true
   of a variable whose name has `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `KEY`, `CREDENTIAL`, `AUTH` or
   `COOKIE` in it; the page hides its value until asked.
 - `parents` go from the nearest to the oldest (at most 24); `children` are the busiest 40 of those
@@ -152,7 +154,9 @@ What a measurement does not say of one process. Params: `pid` and `start`, both 
 Sends a signal to a process, once. Params: `pid`, `start` and `signal` (one of `TERM INT HUP KILL
 STOP CONT USR1 USR2`) are required; `tree` (boolean) sends it to what is below the process too,
 the deepest first. The program reads the process's start again right before it sends; if it does not
-hold the process is `gone` and nothing is sent. Answers
+hold the process is `gone` and nothing is sent, and nothing is sent to what is below it either (a
+process that has the pid now is another's, and so are its children). `tree` is not followed for pid
+0, the kernel's. Answers
 `{ "outcome", "message", "done", "gone", "denied", "failed" }`: `outcome` is how it came out for the
 process named (`done`, `gone`, `denied` where the system refuses, `failed` with the system's words
 in `message`); the counts are over the whole tree.

@@ -40,7 +40,7 @@ local S = {
 	open_card = nil,
 	-- Calls out that the person waits on: a quiet spinner.
 	busy = 0,
-	-- The processes the person marked, by pid (Phase 3 acts on them).
+	-- The processes the person marked, by pid; the table shows them in its mark column.
 	marks = {},
 }
 

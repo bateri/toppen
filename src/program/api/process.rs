@@ -57,6 +57,75 @@ fn is_secret(name: &str) -> bool {
     SECRET_WORDS.iter().any(|word| upper.contains(word))
 }
 
+/// How much of the command line, and how much of the environment, a detail carries: each, in the
+/// bytes the message will have. A process can be started with a mebibyte of either, and a message is
+/// held to a mebibyte.
+const TEXT_BYTES: usize = 256 * 1024;
+
+/// The bytes a character takes in a JSON string.
+fn json_bytes(character: char) -> usize {
+    match character {
+        '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
+        c if c < ' ' => 6,
+        c => c.len_utf8(),
+    }
+}
+
+/// `text` cut where it would take more than `room` bytes in a JSON string, with "…" in place of the
+/// rest.
+fn cut(text: &str, room: usize) -> String {
+    let mut used = 0;
+    let mut out = String::new();
+    for character in text.chars() {
+        used += json_bytes(character);
+        if used > room {
+            out.push('…');
+            break;
+        }
+        out.push(character);
+    }
+    out
+}
+
+/// The words of a command line that fit `TEXT_BYTES`; the word that does not is cut and ends them.
+fn fit_words(words: Vec<String>) -> Vec<String> {
+    let mut room = TEXT_BYTES;
+    let mut kept = Vec::new();
+    for word in words {
+        let size = word.chars().map(json_bytes).sum::<usize>() + 3;
+        if size > room {
+            kept.push(cut(&word, room.saturating_sub(3)));
+            break;
+        }
+        room -= size;
+        kept.push(word);
+    }
+    kept
+}
+
+/// The entries of the environment that fit `TEXT_BYTES`; the one that does not has its value cut
+/// and ends them.
+fn fit_env(entries: Vec<EnvEntry>) -> Vec<EnvEntry> {
+    // What an entry takes besides its name and value: the three members and their punctuation.
+    const FRAME: usize = 48;
+    let mut room = TEXT_BYTES;
+    let mut kept = Vec::new();
+    for mut entry in entries {
+        let size = entry.name.chars().map(json_bytes).sum::<usize>()
+            + entry.value.chars().map(json_bytes).sum::<usize>()
+            + FRAME;
+        if size > room {
+            let name = entry.name.chars().map(json_bytes).sum::<usize>();
+            entry.value = cut(&entry.value, room.saturating_sub(name + FRAME));
+            kept.push(entry);
+            break;
+        }
+        room -= size;
+        kept.push(entry);
+    }
+    kept
+}
+
 /// The process `key` in `sample`, if it is there and still the one that was named.
 fn find(sample: &Sample, key: Key) -> Option<&Process> {
     sample.processes.iter().find(|process| process.key() == key)
@@ -209,22 +278,24 @@ fn detail(session: &Session, target: Target) -> Result<serde_json::Value, Failur
         time: process.cpu_time as f64 / 1000.0,
         read: process.read.round(),
         write: process.write.round(),
-        argv: if looked.argv.is_empty() {
+        argv: fit_words(if looked.argv.is_empty() {
             process.command.split(' ').map(str::to_owned).collect()
         } else {
             looked.argv
-        },
+        }),
         exe: looked.exe,
         cwd: looked.cwd,
-        env: looked
-            .env
-            .into_iter()
-            .map(|(name, value)| EnvEntry {
-                secret: is_secret(&name),
-                name,
-                value,
-            })
-            .collect(),
+        env: fit_env(
+            looked
+                .env
+                .into_iter()
+                .map(|(name, value)| EnvEntry {
+                    secret: is_secret(&name),
+                    name,
+                    value,
+                })
+                .collect(),
+        ),
         fds: looked.fds,
         parents,
         children,
@@ -288,8 +359,20 @@ fn signal(session: &Session, params: SignalParams) -> Result<Outcome, Failure> {
         ))
     })?;
     let key = (params.pid, params.start);
-    let targets = if params.tree {
-        the_sample(session).map_or_else(|_| vec![key], |sample| tree_of(&sample, key))
+    // A tree is built only below a root that is still the process that was named: a pid that another
+    // process has taken is `gone` alone, and the children of the one that has it are left be. The
+    // process 0 is the kernel's, and its "children" are everything.
+    let targets = if params.tree && key.0 != 0 {
+        the_sample(session).map_or_else(
+            |_| vec![key],
+            |sample| {
+                if find(&sample, key).is_some() {
+                    tree_of(&sample, key)
+                } else {
+                    vec![key]
+                }
+            },
+        )
     } else {
         vec![key]
     };
@@ -336,13 +419,14 @@ fn renice(session: &Session, params: ReniceParams) -> Result<Outcome, Failure> {
         .control
         .renice((params.pid, params.start), params.nice);
     let (word, message) = Outcome::of(&result);
+    // One process: the count of how it came out is 1, as a signal to one process has it.
     Ok(Outcome {
         outcome: word,
         message,
-        done: usize::from(result.is_ok()),
-        gone: 0,
-        denied: 0,
-        failed: 0,
+        done: usize::from(word == "done"),
+        gone: usize::from(word == "gone"),
+        denied: usize::from(word == "denied"),
+        failed: usize::from(!matches!(word, "done" | "gone" | "denied")),
     })
 }
 
@@ -660,6 +744,78 @@ mod tests {
             .collect();
         assert_eq!(sent.last(), Some(&root.key()));
         assert!(sent.iter().all(|key| order.contains(key)));
+    }
+
+    #[test]
+    fn a_command_line_and_an_environment_are_cut_to_what_a_message_can_carry() {
+        // Ten words of a hundred kibibytes: the first two and a part of the third are kept.
+        let words: Vec<String> = (0..10).map(|_| "x".repeat(100 * 1024)).collect();
+        let kept = fit_words(words);
+        let bytes: usize = kept.iter().map(|word| word.len() + 3).sum();
+        assert!(bytes <= TEXT_BYTES + 8, "{bytes}");
+        assert_eq!(kept.len(), 3);
+        assert!(kept[2].ends_with('…'));
+        // A short command line is whole.
+        let short = vec!["a".to_owned(), "b\"c".to_owned()];
+        assert_eq!(fit_words(short.clone()), short);
+        // The environment: the entry that does not fit has its value cut and is the last.
+        let entries = (0..10)
+            .map(|index| EnvEntry {
+                name: format!("NAME{index}"),
+                value: "v".repeat(100 * 1024),
+                secret: false,
+            })
+            .collect();
+        let kept = fit_env(entries);
+        assert_eq!(kept.len(), 3);
+        assert!(kept[2].value.ends_with('…'));
+        assert!(kept[2].value.len() < 100 * 1024);
+        // Control characters take six bytes each in JSON: they are counted so.
+        let escaped = fit_words(vec!["\u{1}".repeat(100 * 1024)]);
+        assert!(escaped[0].chars().count() < 100 * 1024);
+        let json = serde_json::to_string(&escaped).unwrap();
+        assert!(json.len() <= TEXT_BYTES + 8, "{}", json.len());
+    }
+
+    #[test]
+    fn a_tree_is_not_built_below_a_pid_that_another_process_has_taken() {
+        let (session, control, sample) = started();
+        let root = sample
+            .processes
+            .iter()
+            .find(|process| {
+                process.user == "lantern"
+                    && sample
+                        .processes
+                        .iter()
+                        .any(|other| other.ppid == process.pid)
+            })
+            .expect("a branch");
+        // The pid is the branch's, the start is not: the process that was named has ended.
+        let out = signal(
+            &session,
+            SignalParams {
+                pid: root.pid,
+                start: root.start + 1,
+                signal: "TERM".to_owned(),
+                tree: true,
+            },
+        )
+        .unwrap();
+        assert_eq!((out.outcome, out.gone, out.done), ("gone", 1, 0));
+        // The process 0 is nobody's tree.
+        let kernel = signal(
+            &session,
+            SignalParams {
+                pid: 0,
+                start: 1,
+                signal: "TERM".to_owned(),
+                tree: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(kernel.done + kernel.denied + kernel.failed + kernel.gone, 1);
+        assert!(control.done().is_empty(), "{:?}", control.done());
     }
 
     #[test]

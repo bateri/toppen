@@ -173,6 +173,23 @@ fn verify(key: Key) -> Result<libc::pid_t, Refused> {
     }
 }
 
+/// The thread ids in `dir` (Linux's `/proc/<pid>/task`), the process's own `pid` first; `pid` alone
+/// where the directory cannot be read.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn threads_in(dir: &std::path::Path, pid: libc::id_t) -> Vec<libc::id_t> {
+    let mut ids = vec![pid];
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut others: Vec<libc::id_t> = entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().to_str()?.parse().ok())
+            .filter(|id| *id != pid)
+            .collect();
+        others.sort_unstable();
+        ids.extend(others);
+    }
+    ids
+}
+
 /// What the system said last, as a refusal.
 fn refusal() -> Refused {
     let error = std::io::Error::last_os_error();
@@ -283,9 +300,28 @@ impl Control for SystemControl {
     fn renice(&self, key: Key, nice: i32) -> Result<(), Refused> {
         let number = verify(key)?;
         let who = libc::id_t::try_from(number).map_err(|_| Refused::Gone)?;
-        // SAFETY: `setpriority` is given a positive process id and a nice value.
-        let set = unsafe { libc::setpriority(libc::PRIO_PROCESS, who, nice) };
-        if set == 0 { Ok(()) } else { Err(refusal()) }
+        // On Linux `setpriority` changes the one thread the id names: the priority of a process is
+        // that of each of its threads.
+        let ids = if cfg!(target_os = "linux") {
+            threads_in(std::path::Path::new(&format!("/proc/{who}/task")), who)
+        } else {
+            vec![who]
+        };
+        let mut changed = false;
+        for id in ids {
+            // SAFETY: `setpriority` is given a positive process or thread id and a nice value.
+            let set = unsafe { libc::setpriority(libc::PRIO_PROCESS, id, nice) };
+            if set == 0 {
+                changed = true;
+            } else {
+                match refusal() {
+                    // A thread that ended on the way is not a failure of the rest.
+                    Refused::Gone if changed => {}
+                    other => return Err(other),
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -324,6 +360,17 @@ mod tests {
             let _ = self.0.kill();
             let _ = self.0.wait();
         }
+    }
+
+    #[test]
+    fn the_threads_of_a_process_are_its_task_directory_with_its_own_id_first() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["42", "40", "41", "not-a-thread"] {
+            std::fs::create_dir(dir.path().join(name)).unwrap();
+        }
+        assert_eq!(threads_in(dir.path(), 41), [41, 40, 42]);
+        // A directory that cannot be read leaves the process itself.
+        assert_eq!(threads_in(&dir.path().join("none"), 7), [7]);
     }
 
     /// What `waitpid` says of the child at once, with the flags: a stop, a continue, an end.

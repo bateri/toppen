@@ -14,6 +14,26 @@ in the pane; any other terminal is given a summary of the machine, as `top -l 1`
 
 ![The processor at length](docs/card-cpu.png)
 
+## Install
+
+toppen is one file, with nothing to install beside it, for macOS on Apple silicon and Linux on
+arm64 and x86_64:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bateri/toppen/main/install.sh | sh
+```
+
+The installer takes the newest release (or `TOPPEN_VERSION=0.1.0`), checks it against the release's
+`SHA256SUMS`, and puts it in `~/.local/bin` (`TOPPEN_INSTALL=<dir>` puts it elsewhere). A file a
+browser downloads is quarantined by macOS; one curl downloads is not.
+
+The Linux files are linked statically, so that one runs on any distribution; a static program cannot
+open NVIDIA's library, so a Linux file from a release shows no NVIDIA card. A build made on the
+machine (`cargo build --release`) does, and so do the AMD and Intel cards of the DRM drivers in
+either.
+
+There is no release yet; until there is one, build it from this repository (below).
+
 ## Use
 
 ```
@@ -129,10 +149,14 @@ In a terminal that does not host pencere views, the same program prints the summ
 
 ```
 make fake-host   # once: the stand-in terminal the tests run toppen in (fetches pencere)
-make check       # format, lints, the program's tests, the page's tests
+make check       # format, lints, the program's tests, the page's tests, the installer's tests
 make build       # target/release/toppen
 make dev         # run it from its files in a pane that hosts pencere
 ```
+
+`make check` needs Rust 1.88 or later and Node 22 (for the installer's tests and the release tools).
+It is the gate GitHub runs on every push and pull request, on Linux and macOS; how a release is made
+is in RELEASING.md.
 
 `docs/calls.md` is the contract between the page and the program.
 

@@ -40,4 +40,6 @@
   table starts, whether names are shown, and the keys of every command, changed by pressing them.
   A key that the terminal, the table or another command has is refused with the reason; a file that
   cannot be read is left as it is.
-
+- An installer (`install.sh`) that fetches the newest release for the machine, checks it against the
+  release's `SHA256SUMS` and puts it in `~/.local/bin`. The Linux files of a release are linked
+  statically, so they show no NVIDIA card (a build made on the machine does).

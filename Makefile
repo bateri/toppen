@@ -1,7 +1,7 @@
 # toppen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page check-timing shots check build pencere-src pencere fake-host pencere-ref dev
+.PHONY: pin fmt lint test test-page test-tools check-timing shots check build dist sums release-prepare rehearse pencere-src pencere fake-host pencere-ref dev
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs toppen under and the stand-in
@@ -9,7 +9,10 @@
 # a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
 #
 #   make dev PENCERE_SRC=../pencere
-PENCERE_REF = $(shell sed -n 's|^source = "git+https://github.com/bateri/pencere?rev=[0-9a-f]*\#\([0-9a-f]\{40\}\)"$$|\1|p' Cargo.lock | head -n 1)
+#
+# `node tools/release.mjs pencere-ref` reads the ref from Cargo.lock: the commit, or the tag of a release
+# on crates.io.
+PENCERE_REF = $(shell node tools/release.mjs pencere-ref)
 PENCERE_CACHE = .cache/pencere
 PENCERE_SRC ?= $(PENCERE_CACHE)
 PENCERE ?= $(PENCERE_SRC)/target/release/pencere
@@ -65,12 +68,49 @@ check-timing:
 shots:
 	cargo test --locked --bin toppen page_shots:: -- --ignored
 
-# check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
-check: pin lint test test-page
+# test-tools runs the tests of the installer (install.sh) against a directory that stands in for
+# GitHub: nothing in them reaches the network.
+test-tools:
+	node --test test/install.test.mjs
+
+# check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests, the
+# installer's tests.
+check: pin lint test test-page test-tools
 
 # build makes target/release/toppen, the program for this machine, with the page in it.
 build:
 	cargo build --locked --release
+
+# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
+# toppen-<version>-<target>. The release workflow runs it on a machine of each of the three targets
+# toppen ships (Apple silicon Macs and both Linux architectures, the Linux ones linked statically
+# with musl; bateri, the terminal that shows the page, runs on Apple silicon only), then `make sums`
+# where the three files are together.
+TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+PACKAGE_VERSION = $(shell node tools/release.mjs version)
+
+dist:
+	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
+	cargo build --locked --release --target $(TARGET)
+	mkdir -p dist/release
+	cp target/$(TARGET)/release/toppen dist/release/toppen-$(PACKAGE_VERSION)-$(TARGET)
+
+# sums writes the SHA256SUMS of the files of dist/release, and checks them.
+sums:
+	cd dist/release && { sha256sum toppen-* 2>/dev/null || shasum -a 256 toppen-*; } > SHA256SUMS
+	@cat dist/release/SHA256SUMS
+	node tools/release.mjs dist dist/release
+
+# release-prepare sets the version and dates the changelog's Unreleased section.
+release-prepare:
+	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
+	node tools/release.mjs prepare $(VERSION)
+
+# rehearse runs the checks of a release of the prepared version, on any branch. It changes nothing:
+# a release is the commit of release-prepare pushed to main, which the release workflow tags,
+# builds and drafts once the gate is green, and publishes when a maintainer approves (RELEASING.md).
+rehearse:
+	node tools/release.mjs rehearse
 
 # pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache (one checkout,
 # moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).
