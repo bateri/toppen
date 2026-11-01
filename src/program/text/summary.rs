@@ -191,13 +191,16 @@ impl Summary {
     #[must_use]
     pub fn text(&self, note: Option<&str>) -> String {
         let mut out = String::new();
-        let _ = writeln!(
-            out,
-            "toppen on {} · {} · up {}",
-            self.host,
-            self.os,
-            duration(self.uptime)
-        );
+        // The first line is held to the width of a terminal as the rest of the text is: a machine
+        // of a long name (a build host's, with its domain) gives up its domain, then its tail.
+        let tail = format!(" · {} · up {}", self.os, duration(self.uptime));
+        let room = TEXT_WIDTH.saturating_sub("toppen on ".chars().count() + tail.chars().count());
+        let host = if self.host.chars().count() <= room {
+            self.host.as_str()
+        } else {
+            self.host.split('.').next().unwrap_or(&self.host)
+        };
+        let _ = writeln!(out, "toppen on {}{tail}", clip(host, room.max(8)));
         out.push('\n');
         let mut line = |label: &str, words: String| {
             let _ = writeln!(out, "{label:<8} {words}");
@@ -300,6 +303,9 @@ impl Summary {
         out
     }
 }
+
+/// The width the text of `--once` is kept within.
+const TEXT_WIDTH: usize = 80;
 
 /// `text` cut to `width` characters, with an ellipsis where it was cut.
 fn clip(text: &str, width: usize) -> String {
@@ -497,6 +503,22 @@ mod tests {
         assert!(text.starts_with("toppen on this machine"), "{text}");
         assert!(!text.contains("lantern"), "{text}");
         assert!(!summary.json().contains("lantern"));
+    }
+
+    #[test]
+    fn a_machine_of_a_long_name_keeps_the_first_line_within_the_width() {
+        let mut summary = summary();
+        summary.host =
+            "sjc22-bm207-153edd9a-e499-485c-b4da-d0b6ff145f0a-AE784AC9D8E6.local".to_owned();
+        let text = summary.text(None);
+        let first = text.lines().next().expect("a first line");
+        assert!(first.chars().count() <= TEXT_WIDTH, "{first}");
+        assert!(first.starts_with("toppen on sjc22-bm207-"), "{first}");
+        summary.host = "x".repeat(200);
+        let text = summary.text(None);
+        let first = text.lines().next().expect("a first line");
+        assert!(first.chars().count() <= TEXT_WIDTH, "{first}");
+        assert!(first.contains('…'), "{first}");
     }
 
     #[test]
