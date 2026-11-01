@@ -295,11 +295,13 @@ end
 
 -- A text of a row, in the tone of its state: dim once the process has ended. The numbers of a column
 -- that ends at the right are set against its edge (the grid only moves a cell's box, and the words
--- grow to fill it).
+-- grow to fill it and are aligned to their end).
 local function words_of(row, words, at_end)
 	local text = b.text(words):color(row.exited and "quiet" or (at_end and "dim" or "foreground")):truncate():min_w(0)
 	if at_end then
-		return b.div():row():items_center():justify_end():grow(1):min_w(0):child(text)
+		-- The words fill the cell and are set against its end: no box around them, since every
+		-- element of every row the table builds is one more for the page to hold.
+		return text:grow(1):align("end")
 	end
 	return text
 end
@@ -368,8 +370,7 @@ end
 
 -- A number set against the right edge of its cell, in `role`; quiet once the process has ended.
 local function number_cell(row, words, role)
-	return b.div():row():items_center():justify_end():grow(1):min_w(0)
-		:child(b.text(words):color(row.exited and "quiet" or role):truncate():min_w(0))
+	return b.text(words):color(row.exited and "quiet" or role):truncate():min_w(0):grow(1):align("end")
 end
 
 -- The processor a process takes, as a share of one processor: quiet when it is next to nothing, and

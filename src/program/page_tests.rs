@@ -1162,3 +1162,26 @@ fn a_signal_is_asked_for_of_the_process_of_the_row_of_the_ports() {
     page.wait_for(WITHIN, |page| !page.says("Cancel"))
         .expect("the question is gone");
 }
+
+/// A big machine in a big pane: the page is held to the kit's memory, as a terminal holds it, while
+/// it draws a while and opens each card's details. The cards' dots and the rows the table builds
+/// ahead are what took it past (the monitor closed by itself, with nothing said).
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_big_machine_in_a_big_pane_stays_within_the_pages_memory() {
+    let session = session_over(Fixture::large(), TICK);
+    let mut page = open(&session, (2560.0, 1400.0), None).expect("the page opens");
+    for _ in 0..30 {
+        page.advance(0.3).expect("the page keeps drawing");
+    }
+    for key in ["1", "2", "3", "4", "5"] {
+        page.press(key).expect("the card is asked for");
+        for _ in 0..6 {
+            page.advance(0.3).expect("the details keep drawing");
+        }
+        page.press("escape").expect("escape goes back");
+    }
+    page.advance(0.3).expect("the table keeps drawing");
+    assert!(page.says("Name"), "{}", short(&page));
+    drop(session);
+}

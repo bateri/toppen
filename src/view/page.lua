@@ -13,6 +13,7 @@ local filter = require("./parts/filter")
 local detail = require("./parts/detail")
 local actions = require("./parts/actions")
 local machine = require("./parts/machine")
+local graph = require("./parts/graph")
 local ports = require("./parts/ports")
 local commands = require("./parts/commands")
 local help = require("./parts/help")
@@ -75,6 +76,7 @@ end
 
 local function render(size, now, reduce_motion)
 	u:begin(size, now, reduce_motion)
+	graph.begin()
 	S.now, S.width, S.height = now, size.w, size.h
 	S.inner = size.w - 2 * SIZE.pad
 	S.layout = layout_of(size.w)

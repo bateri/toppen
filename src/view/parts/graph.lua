@@ -93,30 +93,56 @@ end
 -- past what the kit takes.
 local PITCH = 5
 local DOT = 1.2
--- Circles a path holds at most: six steps each, under the kit's 4096.
-local PER_PATH = 600
+-- The biggest a dot is, and the most columns and rows there are.
+local MOST_DOT = 2.2
+local MOST_COLUMNS = 90
+local MOST_ROWS = 28
+-- Dots a path holds at most: two steps each, under the kit's 4096.
+local PER_PATH = 1800
+-- How long the line of a dot is.
+local JOT = 0.01
 
--- The dots of the last frames, by what they were drawn of: the page draws far more often than a
--- sample comes (the pointer, a drag of an edge), and the same samples make the same dots.
+-- The dots each graph was last drawn with, by where it is (its colours and its size), and what
+-- they were drawn of: the page draws far more often than a sample comes (the pointer, a drag of an
+-- edge), and the same samples make the same dots. Only what the last frame drew is kept, the last
+-- drawing of each place: a drawing is thousands of dots, and a few dozen of them are more than the
+-- page's memory.
 local drawn_before = {}
-local kept = 0
+local drawn_now = {}
+
+-- A frame begins: what the frame before did not draw is forgotten.
+function graph.begin()
+	drawn_before, drawn_now = drawn_now, {}
+end
 
 function graph.dots(lines, count, ceiling, w, h)
 	local inset = 6
 	local role = lines[1].role
 	local box = b.div():w(w):h(h):no_shrink():rounded(6):bg(b.alpha(role, 0.08)):clip()
-	local key = table.concat({ w, h, count, ceiling, role }, ":")
+	local place = table.concat({ w, h, role }, ":")
+	local key = table.concat({ count, ceiling }, ":")
 	for _, line in lines do
-		key ..= ":" .. tostring(line.role) .. ":" .. #line.values .. ":" .. tostring(line.values[#line.values])
+		place ..= ":" .. tostring(line.role)
+		key ..= ":" .. #line.values .. ":" .. tostring(line.values[#line.values])
 	end
-	local before = drawn_before[key]
-	if before ~= nil then
-		before.used = true
+	local before = drawn_now[place] or drawn_before[place]
+	if before ~= nil and before.key == key then
+		drawn_now[place] = before
 		return box:child(b.canvas(before.paths):size(w, h))
 	end
+	-- What this place was drawn with goes now, not at the next frame.
+	drawn_before[place] = nil
 	local inner_w, inner_h = w - 2 * inset, h - 2 * inset
-	local cols = math.max(math.floor((inner_w + PITCH - 2 * DOT) / PITCH), 1)
-	local rows = math.max(math.floor((inner_h + PITCH - 2 * DOT) / PITCH), 1)
+	-- A column for each sample at most: a wide card spaces its dots out and makes them bigger, as
+	-- many as a narrow one has, not more (each is a part of a path the page holds).
+	local cols = math.max(math.min(math.floor((inner_w + PITCH - 2 * DOT) / PITCH), count, MOST_COLUMNS), 1)
+	local pitch = cols > 1 and math.max(PITCH, (inner_w - 2 * DOT) / (cols - 1)) or PITCH
+	local dot = math.min(DOT * pitch / PITCH, MOST_DOT)
+	if cols > 1 and dot > DOT then
+		-- The bigger dots stand as far in from the edge as the small ones.
+		pitch = math.max(PITCH, (inner_w - 2 * dot) / (cols - 1))
+	end
+	local rows = math.max(math.min(math.floor((inner_h - 2 * dot) / pitch) + 1, MOST_ROWS), 1)
 	-- Each column is the highest of the samples that fall in it.
 	local series = {}
 	for index, line in lines do
@@ -152,11 +178,16 @@ function graph.dots(lines, count, ceiling, w, h)
 			group.paths[#group.paths + 1] = b.path()
 		end
 		group.count += 1
-		group.paths[#group.paths]:circle(x, y, DOT)
+		-- A dot is a line too short to see, stroked: the kit's lines end round, so it is a
+		-- circle of the stroke's width in two steps, where `circle` takes six.
+		local segments = group.paths[#group.paths].segments
+		local n = #segments
+		segments[n + 1] = { "move", x, y }
+		segments[n + 2] = { "line", x, y + JOT }
 	end
 	local quiet = b.alpha(role, 0.16)
-	local x0 = w - inset - DOT - (cols - 1) * PITCH
-	local y0 = h - inset - DOT
+	local x0 = w - inset - dot - (cols - 1) * pitch
+	local y0 = h - inset - dot
 	for column = 1, cols do
 		local first = series[1][column]
 		local second = series[2] and series[2][column] or -1
@@ -169,9 +200,9 @@ function graph.dots(lines, count, ceiling, w, h)
 		end
 		local both = series[2] ~= nil and math.min(first, second) or high
 		local high_role = (series[2] ~= nil and second > first) and lines[2].role or role
-		local x = x0 + (column - 1) * PITCH
+		local x = x0 + (column - 1) * pitch
 		for row = 1, rows do
-			local y = y0 - (row - 1) * PITCH
+			local y = y0 - (row - 1) * pitch
 			if row <= both then
 				put(low_role, x, y)
 			elseif row <= high then
@@ -184,22 +215,11 @@ function graph.dots(lines, count, ceiling, w, h)
 	local paths = {}
 	for color, group in groups do
 		for _, path in group.paths do
-			paths[#paths + 1] = path:fill(color)
+			paths[#paths + 1] = path:stroke(2 * dot, color)
 		end
 	end
-	-- Kept for the next frames; what no frame asked for since the last sweep goes.
-	kept += 1
-	if kept > 64 then
-		for old, entry in drawn_before do
-			if not entry.used then
-				drawn_before[old] = nil
-			else
-				entry.used = false
-			end
-		end
-		kept = 0
-	end
-	drawn_before[key] = { paths = paths, used = true }
+	-- Kept for the next frame, in place of what this place was drawn with before.
+	drawn_now[place] = { key = key, paths = paths }
 	return box:child(b.canvas(paths):size(w, h))
 end
 

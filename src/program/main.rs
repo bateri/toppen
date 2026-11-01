@@ -184,7 +184,16 @@ fn main() -> ExitCode {
     let fallen_back = Arc::new(Mutex::new(None));
     let outcome = pencere::serve(options(&session, &fallen_back).control(view));
     let status = match outcome {
-        Ok(Outcome::Closed(closed)) if closed.by == EndedBy::Error => 1,
+        // The terminal took the monitor down: what it said is the one trace of why, so it is
+        // left under the prompt rather than lost with the view.
+        Ok(Outcome::Closed(closed)) if closed.by == EndedBy::Error => {
+            let words = closed
+                .message
+                .as_deref()
+                .unwrap_or("the terminal gave no reason");
+            eprintln!("toppen: the monitor stopped: {words}");
+            1
+        }
         Ok(outcome) => fallen_back
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

@@ -192,7 +192,7 @@ end
 -- --- The cells ---------------------------------------------------------------------------------------------
 
 local function right(words)
-	return b.div():row():items_center():justify_end():grow(1):min_w(0):child(b.text(words):truncate():min_w(0))
+	return b.text(words):truncate():min_w(0):grow(1):align("end")
 end
 
 local function cell(place, column)
