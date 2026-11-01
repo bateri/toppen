@@ -34,7 +34,7 @@ pub(crate) type Page = Headless<InProcess>;
 
 /// What the page's module is held to. The tests say what the page shows and does, not how fast a
 /// machine is: a runner under load takes ten times as long as one at rest, so the kit's 250 ms a
-/// call, 2 s to start and 20 s to compile, which are the wall clock's, are far wider here by
+/// call and 2 s to start, which are the wall clock's, are far wider here by
 /// default (`GENEROUS_CALL`). With `TOPPEN_CALL_MS` set (`make check-timing`) a call is held to that
 /// many milliseconds, the rest to the kit's own: the page in the time a terminal gives it, or in
 /// half of it (`TOPPEN_CALL_MS=125`), to see how near it comes. Meant for a machine at rest.
@@ -48,7 +48,6 @@ pub(crate) fn limits(call_ms: Option<u64>) -> pencere_sandbox::ModuleLimits {
         None => pencere_sandbox::ModuleLimits {
             call: GENEROUS_CALL,
             start: GENEROUS_CALL * 6,
-            compile: GENEROUS_CALL * 12,
             ..kit
         },
     }
