@@ -25,23 +25,20 @@ local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 -- --- The commands --------------------------------------------------------------------------------------------
 --
 -- What can be done, once (parts/commands.lua): the keys, the host's list, the palette, the help and
--- the status line are made of it. A key with a letter is the page's only while the keyboard is not
--- in a field. The conditions are named in the table and given here.
+-- the status line are made of it. The conditions are named in the table and given here; they say what
+-- the page shows, and the kit keeps a field's characters its own.
 
 commands.when = {
-	idle = function()
-		return u.holder == "page"
-	end,
-	-- A command about a process: the keyboard is not in a field, and there is a process to be about.
+	-- A command about a process: there is a process to be about.
 	process = function()
-		return u.holder == "page" and detail.target() ~= nil
+		return detail.target() ~= nil
 	end,
 	ports = function()
-		return u.holder == "page" and ports.state.open
+		return ports.state.open
 	end,
 	-- The GPU's card is there only where the machine has a GPU.
 	gpu = function()
-		return u.holder == "page" and S.boot ~= nil and S.boot.features.gpu
+		return S.boot ~= nil and S.boot.features.gpu
 	end,
 }
 

@@ -23,36 +23,39 @@ commands.SIGNALS = {
 	{ word = "USR2", id = "signal_usr2", title = "Send USR2", about = "is a signal programs give a meaning of their own; one that has none ends" },
 }
 
--- `when` names the condition a command can be done under (page.lua gives them: `commands.when`).
+-- `when` names the condition a command can be done under (page.lua gives them: `commands.when`): what
+-- the page is showing, never where the keyboard is. While a field has the keyboard the kit gives it the
+-- characters and the page the chords and the function keys, so `t` in the filter is a letter of it and
+-- ⌘K there opens the palette.
 -- The keys are the few that are wanted often; the rest are in the menus and the palette. htop's
 -- function keys are there too, as a second key where it has one.
 local TABLE = {
-	{ id = "pause", title = "Pause or resume updates", group = "Updates", keys = { "space" }, when = "idle" },
-	{ id = "interval_faster", title = "Look at the machine more often", group = "Updates", keys = { "+", "=" }, when = "idle" },
-	{ id = "interval_slower", title = "Look at the machine less often", group = "Updates", keys = { "-" }, when = "idle" },
+	{ id = "pause", title = "Pause or resume updates", group = "Updates", keys = { "space" } },
+	{ id = "interval_faster", title = "Look at the machine more often", group = "Updates", keys = { "+", "=" } },
+	{ id = "interval_slower", title = "Look at the machine less often", group = "Updates", keys = { "-" } },
 
-	{ id = "filter", title = "Filter processes", group = "Table", keys = { "/", "f4" }, when = "idle" },
-	{ id = "tree", title = "Show the process tree", group = "Table", keys = { "t", "f5" }, when = "idle" },
-	{ id = "group", title = "Group processes by name", group = "Table", keys = { "g" }, when = "idle" },
-	{ id = "fold", title = "Fold or open the branch", group = "Table", keys = { "f" }, when = "idle" },
-	{ id = "fold_all", title = "Fold every branch", group = "Table", keys = { "[" }, when = "idle" },
-	{ id = "open_all", title = "Open every branch", group = "Table", keys = { "]" }, when = "idle" },
-	{ id = "sort_next", title = "Sort by the next column", group = "Table", keys = { ">", "f6" }, when = "idle" },
-	{ id = "sort_prev", title = "Sort by the previous column", group = "Table", keys = { "<" }, when = "idle" },
-	{ id = "reverse", title = "Reverse the order", group = "Table", keys = { "r" }, when = "idle" },
-	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = { "m" }, when = "idle" },
-	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = { "o" }, when = "idle" },
+	{ id = "filter", title = "Filter processes", group = "Table", keys = { "/", "f4" } },
+	{ id = "tree", title = "Show the process tree", group = "Table", keys = { "t", "f5" } },
+	{ id = "group", title = "Group processes by name", group = "Table", keys = { "g" } },
+	{ id = "fold", title = "Fold or open the branch", group = "Table", keys = { "f" } },
+	{ id = "fold_all", title = "Fold every branch", group = "Table", keys = { "[" } },
+	{ id = "open_all", title = "Open every branch", group = "Table", keys = { "]" } },
+	{ id = "sort_next", title = "Sort by the next column", group = "Table", keys = { ">", "f6" } },
+	{ id = "sort_prev", title = "Sort by the previous column", group = "Table", keys = { "<" } },
+	{ id = "reverse", title = "Reverse the order", group = "Table", keys = { "r" } },
+	{ id = "mark", title = "Mark or unmark the process", group = "Table", keys = { "m" } },
+	{ id = "subtree", title = "Only this process and its children", group = "Table", keys = { "o" } },
 	{ id = "filter_user", title = "Show only the processes of this user", group = "Table", when = "process" },
 	{ id = "filter_name", title = "Show only the processes of this name", group = "Table", when = "process" },
 
-	{ id = "card_cpu", title = "Show the details of CPU", group = "Cards", keys = { "1" }, when = "idle" },
-	{ id = "card_memory", title = "Show the details of Memory", group = "Cards", keys = { "2" }, when = "idle" },
-	{ id = "card_network", title = "Show the details of Network", group = "Cards", keys = { "3" }, when = "idle" },
-	{ id = "card_disk", title = "Show the details of Disk", group = "Cards", keys = { "4" }, when = "idle" },
+	{ id = "card_cpu", title = "Show the details of CPU", group = "Cards", keys = { "1" } },
+	{ id = "card_memory", title = "Show the details of Memory", group = "Cards", keys = { "2" } },
+	{ id = "card_network", title = "Show the details of Network", group = "Cards", keys = { "3" } },
+	{ id = "card_disk", title = "Show the details of Disk", group = "Cards", keys = { "4" } },
 	{ id = "card_gpu", title = "Show the details of GPU", group = "Cards", keys = { "5" }, when = "gpu" },
-	{ id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = { "w" }, when = "idle" },
+	{ id = "range_next", title = "Change how long the graphs look back", group = "Cards", keys = { "w" } },
 
-	{ id = "ports", title = "Show or hide the listening ports", group = "Ports", keys = { "p" }, when = "idle" },
+	{ id = "ports", title = "Show or hide the listening ports", group = "Ports", keys = { "p" } },
 	{ id = "port_show", title = "Show the process of the socket in the table", group = "Ports", when = "ports" },
 	{ id = "copy_address", title = "Copy the address of the socket", group = "Ports", keys = { "a" }, when = "ports" },
 	{ id = "copy_port", title = "Copy the port of the socket", group = "Ports", when = "ports" },
@@ -67,9 +70,9 @@ local TABLE = {
 	{ id = "copy_cwd", title = "Copy the working folder", group = "Process", when = "process" },
 	-- The signals are here, after the others of the process.
 
-	{ id = "palette", title = "Find a command or a process", group = "Toppen", keys = { "cmd+k", "ctrl+k" }, when = "idle" },
-	{ id = "help", title = "Show the keys", group = "Toppen", keys = { "?", "f1" }, when = "idle" },
-	{ id = "settings", title = "Open the settings", group = "Toppen", keys = { "cmd+,", "f2" }, when = "idle" },
+	{ id = "palette", title = "Find a command or a process", group = "Toppen", keys = { "cmd+k", "ctrl+k" } },
+	{ id = "help", title = "Show the keys", group = "Toppen", keys = { "?", "f1" } },
+	{ id = "settings", title = "Open the settings", group = "Toppen", keys = { "cmd+,", "f2" } },
 }
 for _, signal in commands.SIGNALS do
 	TABLE[#TABLE + 1] = { id = signal.id, title = signal.title, group = "Process", when = "process" }

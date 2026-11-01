@@ -354,6 +354,24 @@ fn the_filter_narrows_the_table_and_a_wrong_pattern_says_what_is_wrong() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn while_the_filter_has_the_keyboard_a_letter_is_its_and_command_k_opens_the_palette() {
+    let (session, mut page) = open_small(WIDE);
+    page.command("filter").expect("the filter is asked for");
+    // A letter pressed in the field is a letter of the filter, not the key of the tree.
+    page.press("t").expect("t is pressed in the filter");
+    page.wait_for(WITHIN, |_| session.table().view().filter == "t")
+        .expect("the filter has the letter");
+    assert_eq!(session.table().view().mode, Mode::Flat);
+    // A chord is the page's wherever the keyboard is: the palette, with every command in it.
+    page.press("cmd+k")
+        .expect("command k is pressed in the filter");
+    page.wait_for(WITHIN, |page| page.says("Find a command or a process"))
+        .expect("the palette opens from the filter");
+    assert!(page.says("Show the process tree"), "{}", short(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn the_tree_folds_into_its_branches_and_opens_again() {
     let (session, mut page) = open_small(WIDE);
     page.press("t").expect("t is pressed");
