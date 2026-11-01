@@ -742,7 +742,7 @@ fn a_machine_with_a_gpu_has_its_card_and_the_card_opens_to_its_details() {
     let (_session, mut page) = open_small(WIDE);
     // The card is among the others, with the memory the GPU uses.
     assert!(page.says("GPU"), "{}", short(&page));
-    assert!(said(&page).contains(" in use"), "{}", short(&page));
+    assert!(page.says("Average"), "{}", short(&page));
     page.press("5").expect("the GPU is asked for");
     page.wait_for(WITHIN, |page| page.says("GPU use"))
         .expect("the GPU is drawn at length");
@@ -980,6 +980,15 @@ fn a_key_is_changed_by_pressing_it_a_taken_key_is_refused_and_the_file_is_writte
     page.wait_for(WITHIN, |page| !page.says("Settings"))
         .expect("the settings are gone");
     let before = session.table().view().descending;
+    // The page writes its commands again with the frame after the settings went: the key is the
+    // command's once the host has them so.
+    page.wait_for(WITHIN, |page| {
+        page.outline()
+            .commands
+            .iter()
+            .any(|command| command.title == "Reverse the order" && command.enabled)
+    })
+    .expect("the command can be done again");
     page.press("x").expect("the new key is pressed");
     page.wait_for(WITHIN, |_| session.table().view().descending != before)
         .expect("the order was reversed");

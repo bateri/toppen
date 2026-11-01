@@ -1,6 +1,8 @@
--- The cards of the overview: CPU, memory, network and disk, and the GPU where the machine has one. A card is a title, the value of
--- this moment, the last minute as a graph, and a line or two of what the value is made of. In a
--- short card the title and the value share a line and the graph is what is left.
+-- The cards of the overview: CPU, memory, network and disk, and the GPU where the machine has one.
+-- Each card has a colour of its own (its title, its graph, the ground of its graph): a caption, the
+-- value of this moment large with its unit small beside it, three figures of what the value is made
+-- of, and the last minute as a matrix of dots. A shorter card leaves the caption out; a short one
+-- puts the value on the line of its title and its figures on one line under its graph.
 
 local kit = require("../lib/kit")
 local graph = require("./graph")
@@ -12,20 +14,24 @@ local cards = {}
 
 local PAD = 14
 local GAP = 6
-local HEAD = 16
+local HEAD = 18
+local CAPTION = 14
 local BIG = 34
+local FIGURES = 32
 local LINE = 16
 -- The least a graph is worth drawing at.
-local GRAPH_MIN = 28
-local STRIP = 14
--- A card shorter than this is compact: its value shares the line of its title.
+local GRAPH_MIN = 24
+local STRIP = 12
+-- A card at least this tall has its caption; one at least `ROOMY` tall its figures on their own
+-- line; a shorter one is compact.
+local FULL = 196
 local ROOMY = 150
--- A card shorter than this has room for one line under its graph.
-local TALL = 190
 
-local function dim(words)
-	return b.text(words):color("dim"):truncate():min_w(0)
-end
+-- The colour of each card, and the second line of the cards that draw two: the terminal's own
+-- palette, whose colours are far enough apart to tell the cards and the two lines apart.
+local ROLES = { cpu = "blue", memory = "green", network = "cyan", disk = "yellow", gpu = "magenta" }
+local SECOND = "magenta"
+local SECOND_DISK = "red"
 
 local function quiet(words)
 	return b.text(words):color("quiet"):truncate():min_w(0)
@@ -36,91 +42,136 @@ function cards.window()
 	return math.max(30, math.min(kit.SIZE.kept, math.ceil(60 / math.max(S.interval, 0.1))))
 end
 
-local function value_text(words, role, size)
-	return b.text(words):text_size(size):weight(600):color(role):no_shrink()
+-- A number of bytes as its number and its unit, apart: "10.2", "GiB"; a whole number from a
+-- hundred on ("193", not "193.0").
+local function bytes_apart(count, per_second)
+	local words = format.bytes(count)
+	local number, unit = string.match(words, "^(%S+)%s+(%S+)$")
+	if number == nil then
+		return words, ""
+	end
+	if tonumber(number) ~= nil and tonumber(number) >= 100 then
+		number = string.format("%d", math.floor(tonumber(number) + 0.5))
+	end
+	return number, per_second and (unit .. "/s") or unit
 end
 
--- The two lines of a graph that has two (down and up, read and write), in colours of the terminal's
--- own palette: the theme's roles are too near each other to tell two lines apart.
-local FIRST = "green"
-local SECOND = "magenta"
-
--- An arrow and a rate: the direction a network or a disk moves bytes in. `tight` is a card too
--- narrow for both rates at the size of a compact card's head.
-local function flow(arrow, role, per_second, size, tight)
-	if size < 22 and tight ~= nil then
-		size = tight and 12 or 14
-	end
-	return b.div():row():items_center():gap(3):no_shrink()
-		:child(kit.icon(arrow, size - 6, role))
-		:child(value_text(format.short_bytes(per_second) .. "/s", "foreground", size))
+-- A size and a rate as a figure under the value says them: three characters of number at most.
+local short = format.short_bytes
+local function short_rate(per_second)
+	return format.short_bytes(per_second) .. "/s"
 end
 
--- The two rates of a network or a disk, down and up, side by side: as big as `size` where `w` has
--- room for both, smaller where it has not.
-local function flows(down, up, size, tight, w)
-	if w ~= nil then
-		local words = math.max(#format.short_bytes(down), #format.short_bytes(up)) + 2
-		-- A character of the terminal's font is about 0.6 of its size wide; an arrow is one more.
-		local fits = math.floor((w - 12) / 2 / (0.6 * words + 0.8))
-		size = math.max(14, math.min(size, fits))
+-- The last part of a mount point, for the side of a narrow card: "Data", not "/System/Volumes/Data".
+local function mount_name(mount)
+	if mount == "/" then
+		return mount
 	end
-	local row = b.div():row():items_center():gap(12):no_shrink()
-	row:child(flow("arrow-down", FIRST, down, size, tight))
-	row:child(flow("arrow-up", SECOND, up, size, tight))
+	return string.match(mount, "([^/]+)/*$") or mount
+end
+
+-- The value of this moment: the number large, its unit small and dim beside it, on one baseline.
+local function value_of(number, unit, role, size)
+	local row = b.div():row():items_end():gap(3):no_shrink()
+		:child(b.text(number):text_size(size):weight(650):color(role):no_shrink())
+	if unit ~= "" then
+		row:child(b.text(unit):text_size(math.max(math.floor(size * 0.5), 11)):color("dim"):no_shrink()
+			:pb(math.floor(size * 0.12)))
+	end
 	return row
 end
 
--- The card: `spec` is { title =, side =, big = function(size) -> element, graph = function(w, h) ->
--- element, strip = function(w) -> element (optional), lines = { element, ... } }.
+-- The figures under the value: up to three, each a quiet label over its value.
+local function figures(list, w)
+	local row = b.div():row():gap(8):h(FIGURES):w(w):no_shrink()
+	-- A narrow card says its figures smaller, so that "673 KiB/s" fits its column.
+	local column = (w - 8 * math.max(#list - 1, 0)) / math.max(#list, 1)
+	if column < 66 and #list > 2 then
+		-- Too narrow for three: two whole figures say more than three cut ones.
+		list = { list[1], list[2] }
+		column = (w - 8) / 2
+	end
+	local size = column >= 80 and 12.5 or 11
+	for _, figure in list do
+		row:child(b.div():col():gap(2):grow(1):w(0):min_w(0)
+			:child(b.text(figure[1]):text_size(10.5):color("quiet"):truncate():min_w(0))
+			:child(b.text(figure[2]):text_size(size):weight(600):truncate():min_w(0)))
+	end
+	return row
+end
+
+-- The figures on one line, for a compact card.
+local function figures_line(list)
+	local parts = {}
+	for _, figure in list do
+		parts[#parts + 1] = string.lower(figure[1]) .. " " .. figure[2]
+	end
+	return quiet(table.concat(parts, " · "))
+end
+
+-- The card: `spec` is { key =, title =, side =, caption =, number =, unit =, value_role =, badge =
+-- { words, tone } or nil, figures = { { label, value } x3 }, graph = function(w, h) -> element,
+-- strip = function(w, h) -> element or nil }.
 local function card(spec, w, h)
-	local roomy = h >= ROOMY
+	local role = ROLES[spec.key]
 	local inner_w = w - 2 * PAD
 	local name = "card/" .. spec.key
 	local over = u:hovered(name)
-	local box = b.div():w(w):h(h):no_shrink():col():gap(GAP):p(PAD):rounded(8):bg("raised1"):clip()
+	local open = S.open_card == spec.key
+	local box = b.div():w(w):h(h):no_shrink():col():gap(GAP):p(PAD):rounded(kit.SIZE.radius):bg("raised1"):clip()
 		:press(name):role("button"):label("Show the details of " .. spec.title)
-		:border(1, b.alpha("accent", S.open_card == spec.key and 0.9 or (over and 0.55 or 0)))
-	local lines = spec.lines
-	local used = 2 * PAD
+		:border(1, b.alpha(role, open and 0.9 or (over and 0.5 or 0)))
+		:motion({ seconds = 0.12, color = true })
 	local head = b.div():row():items_center():gap(8):h(HEAD):no_shrink()
-		:child(b.text(spec.title):weight(650):color(roomy and "dim" or "foreground"):no_shrink())
-	if spec.side and w >= 200 then
-		head:child(b.div():grow(1):min_w(0):row():justify_end():child(quiet(spec.side)))
-	else
-		head:child(b.spacer())
-	end
-	if roomy then
-		box:child(head)
-		box:child(b.div():row():items_center():h(BIG):no_shrink():child(spec.big(28, nil, inner_w)))
-		used += HEAD + BIG + 2 * GAP
-		if h < TALL and #lines > 1 then
-			lines = { lines[1] }
+		:child(b.text(spec.title):weight(650):color(role):no_shrink())
+	local used = 2 * PAD
+	if h >= ROOMY then
+		-- Without the room for its caption, the card says it beside its title where nothing else is.
+		local side = spec.side or (h < FULL and spec.caption) or nil
+		if side and w >= 200 then
+			head:child(b.div():grow(1):min_w(0):row():justify_end():child(quiet(side)))
 		end
-	else
-		head:child(spec.big(18, w < 270))
 		box:child(head)
-		lines = { spec.compact or spec.lines[1] }
 		used += HEAD + GAP
+		if h >= FULL and spec.caption then
+			box:child(b.div():h(CAPTION):no_shrink():child(b.text(spec.caption):text_size(11.5):color("dim"):truncate():min_w(0)))
+			used += CAPTION + GAP
+		end
+		local big = b.div():row():items_center():h(BIG):no_shrink():child(value_of(spec.number, spec.unit, spec.value_role, 28))
+		if spec.badge then
+			big:child(b.spacer()):child(u:badge(spec.badge[1], { tone = spec.badge[2] }))
+		end
+		box:child(big)
+		box:child(figures(spec.figures, inner_w))
+		used += BIG + FIGURES + 2 * GAP
+	else
+		head:child(b.spacer()):child(value_of(spec.number, spec.unit, spec.value_role, 18))
+		box:child(head)
+		used += HEAD + GAP + LINE + GAP
 	end
-	used += #lines * LINE + (#lines > 0 and GAP or 0)
 	local graph_h = h - used
-	local strip = spec.strip and roomy and graph_h - STRIP - GAP >= GRAPH_MIN
+	local strip = spec.strip and h >= ROOMY and graph_h - STRIP - GAP >= GRAPH_MIN * 2
 	if strip then
 		graph_h -= STRIP + GAP
 	end
 	if graph_h >= GRAPH_MIN then
-		box:child(spec.graph(inner_w, graph_h))
+		box:child(spec.graph(inner_w, graph_h, role))
 	else
 		box:child(b.spacer())
 	end
 	if strip then
 		box:child(spec.strip(inner_w, STRIP))
 	end
-	for _, line in lines do
-		box:child(b.div():row():items_center():gap(8):h(LINE):no_shrink():child(line))
+	if h < ROOMY then
+		box:child(b.div():row():items_center():h(LINE):no_shrink():child(figures_line(spec.figures)))
 	end
 	return box
+end
+
+-- The value of a share drawn in the card's own ink, and in a warning's where it is high.
+local function share_role(share)
+	local role = format.load_role(share)
+	return role == "accent" and "foreground" or role
 end
 
 -- --- The cards ---------------------------------------------------------------------------------------
@@ -129,11 +180,14 @@ local function cpu_card()
 	local sample = S.sample
 	local machine = S.boot.machine
 	local total = sample and sample.cpu.total or 0
-	local role = format.load_role(total)
-	local lines = {}
+	local list = {}
 	if sample then
-		local load = sample.load
-		lines[#lines + 1] = dim(string.format("load %.2f %.2f %.2f", load[1], load[2], load[3]))
+		list[1] = { "Load", string.format("%.2f", sample.load[1]) }
+		local busiest = 0
+		for _, core in sample.cpu.cores do
+			busiest = math.max(busiest, core)
+		end
+		list[2] = { "Top core", format.percent(busiest) }
 		local sum, count = 0, 0
 		for _, freq in sample.cpu.freq do
 			if freq > 0 then
@@ -142,125 +196,134 @@ local function cpu_card()
 			end
 		end
 		if count > 0 then
-			lines[#lines + 1] = quiet(string.format("%d threads · %.1f GHz", machine.threads, sum / count / 1000))
+			list[3] = { "Frequency", string.format("%.1f GHz", sum / count / 1000) }
 		else
-			lines[#lines + 1] = quiet(string.format("%d threads", machine.threads))
+			list[3] = { "Threads", tostring(machine.threads) }
 		end
 	end
 	return {
 		key = "cpu",
 		title = "CPU",
 		side = machine.cpu,
-		big = function(size)
-			return value_text(format.percent(total), role, size)
-		end,
-		graph = function(w, h)
-			return graph.area({ { values = S.series.cpu, role = role } }, cards.window(), 100, w, h)
+		caption = string.format("Now, on %d threads", machine.threads),
+		number = tostring(math.floor(total + 0.5)),
+		unit = "%",
+		value_role = share_role(total),
+		figures = list,
+		graph = function(w, h, role)
+			return graph.dots({ { values = S.series.cpu, role = role } }, cards.window(), 100, w, h)
 		end,
 		strip = machine.threads > 1 and sample and function(w, h)
-			return graph.bars(sample.cpu.cores, "accent", w, h)
+			return graph.bars(sample.cpu.cores, ROLES.cpu, w, h)
 		end or nil,
-		lines = lines,
 	}
 end
 
+-- Memory pressure as a word and a tone: what the system says of how hard memory is to come by.
+local function pressure(share)
+	if share == nil then
+		return nil
+	elseif share >= 80 then
+		return { "Critical", "bad" }
+	elseif share >= 50 then
+		return { "Elevated", "warn" }
+	end
+	return { "Normal", "ok" }
+end
+
 local function memory_card()
-	local sample = S.sample
-	local mem = sample and sample.mem
+	local mem = S.sample and S.sample.mem
+	local number, unit = bytes_apart(mem and mem.used or 0)
 	local share = mem and mem.total > 0 and mem.used / mem.total * 100 or 0
-	local role = format.load_role(share)
-	local lines = {}
+	local list = {}
 	if mem then
-		lines[#lines + 1] = dim(string.format("%s of %s", format.bytes(mem.used), format.bytes(mem.total)))
-		local second = {}
-		if mem.swapTotal > 0 then
-			second[#second + 1] = string.format("swap %s of %s", format.bytes(mem.swapUsed), format.bytes(mem.swapTotal))
+		local parts = mem.breakdown
+		if parts ~= nil and (parts.wired > 0 or parts.compressed > 0) then
+			list = { { "App", short(parts.app) }, { "Wired", short(parts.wired) }, { "Compressed", short(parts.compressed) } }
+		elseif parts ~= nil then
+			list = { { "App", short(parts.app) }, { "Cached", short(parts.cached) }, { "Free", short(parts.free) } }
+		else
+			list = { { "Used", format.percent(share) }, { "Available", short(mem.available) } }
 		end
-		if mem.pressure ~= nil then
-			second[#second + 1] = string.format("pressure %d%%", math.floor(mem.pressure + 0.5))
-		end
-		if #second > 0 then
-			lines[#lines + 1] = quiet(table.concat(second, " · "))
+		if mem.swapTotal > 0 and #list < 3 then
+			list[#list + 1] = { "Swap", short(mem.swapUsed) }
 		end
 	end
 	return {
 		key = "memory",
 		title = "Memory",
-		big = function(size)
-			return value_text(format.percent(share), role, size)
+		caption = mem and string.format("In use of %s", format.bytes(mem.total)) or nil,
+		number = number,
+		unit = unit,
+		value_role = share_role(share),
+		badge = mem and pressure(mem.pressure) or nil,
+		figures = list,
+		graph = function(w, h, role)
+			return graph.dots({ { values = S.series.mem, role = role } }, cards.window(), 100, w, h)
 		end,
-		graph = function(w, h)
-			local count = cards.window()
-			local drawn = { { values = S.series.mem, role = role } }
-			if mem and mem.swapTotal > 0 then
-				drawn[#drawn + 1] = { values = S.series.swap, role = SECOND }
-			end
-			return graph.area(drawn, count, 100, w, h)
-		end,
-		lines = lines,
 	}
 end
 
 local function network_card()
-	local sample = S.sample
-	local net = sample and sample.net
-	local lines = {}
-	local compact = nil
+	local net = S.sample and S.sample.net
+	local number, unit = bytes_apart(net and net.rx or 0, true)
+	local list = {}
 	if net then
-		lines[#lines + 1] = dim(string.format("%s down · %s up since boot", format.bytes(net.totalRx), format.bytes(net.totalTx)))
-		compact = dim(string.format("%s down · %s up", format.bytes(net.totalRx), format.bytes(net.totalTx)))
-		local busiest = net.interfaces[1]
-		if busiest then
-			lines[#lines + 1] = quiet(busiest.name)
-		end
+		list = {
+			{ "Uploading", short_rate(net.tx) },
+			{ "Received", short(net.totalRx) },
+			{ "Sent", short(net.totalTx) },
+		}
 	end
+	local busiest = net and net.interfaces[1]
 	return {
 		key = "network",
 		title = "Network",
-		compact = compact,
-		big = function(size, tight, w)
-			return flows(net and net.rx or 0, net and net.tx or 0, size, tight, w)
-		end,
-		graph = function(w, h)
+		side = busiest and busiest.name or nil,
+		caption = "Downloading",
+		number = number,
+		unit = unit,
+		value_role = "foreground",
+		figures = list,
+		graph = function(w, h, role)
 			local count = cards.window()
-			local lines_drawn = { { values = S.series.rx, role = FIRST }, { values = S.series.tx, role = SECOND } }
-			return graph.area(lines_drawn, count, graph.ceiling(lines_drawn, count, 10 * 1024) * 1.1, w, h)
+			local drawn = { { values = S.series.rx, role = role }, { values = S.series.tx, role = SECOND } }
+			return graph.dots(drawn, count, graph.ceiling(drawn, count, 10 * 1024) * 1.1, w, h)
 		end,
-		lines = lines,
 	}
 end
 
 local function disk_card()
-	local sample = S.sample
-	local disk = sample and sample.disk
+	local disk = S.sample and S.sample.disk
 	local io = S.boot.features.diskIo
 	-- The program tells the volume the person's files are on first.
 	local volume = disk and disk.volumes[1]
-	local lines = {}
-	if volume then
-		lines[#lines + 1] = dim(string.format("%s · %s of %s", volume.mount, format.bytes(volume.used), format.bytes(volume.total)))
+	local free = volume and math.max(volume.total - volume.used, 0) or 0
+	local number, unit = bytes_apart(free)
+	local used_share = volume and volume.total > 0 and volume.used / volume.total * 100 or 0
+	local list = {}
+	if disk and io then
+		list = { { "Reading", short_rate(disk.read) }, { "Writing", short_rate(disk.write) }, { "Used", format.percent(used_share) } }
+	elseif volume then
+		list = { { "Used", short(volume.used) }, { "Size", short(volume.total) }, { "Volumes", tostring(#disk.volumes) } }
 	end
-	if disk and #disk.volumes > 1 then
-		lines[#lines + 1] = quiet(string.format("%d volumes", #disk.volumes))
-	end
-	local spec = { key = "disk", title = "Disk", lines = lines }
-	if volume then
-		spec.compact = dim(string.format("%s of %s · %s", format.bytes(volume.used), format.bytes(volume.total), format.percent(volume.total > 0 and volume.used / volume.total * 100 or 0)))
-	end
+	local spec = {
+		key = "disk",
+		title = "Disk",
+		side = volume and mount_name(volume.mount) or nil,
+		caption = volume and string.format("Free of %s", format.bytes(volume.total)) or nil,
+		number = number,
+		unit = unit,
+		value_role = share_role(used_share),
+		figures = list,
+	}
 	if io then
-		spec.big = function(size, tight, w)
-			return flows(disk and disk.read or 0, disk and disk.write or 0, size, tight, w)
-		end
-		spec.graph = function(w, h)
+		spec.graph = function(w, h, role)
 			local count = cards.window()
-			local drawn = { { values = S.series.read, role = FIRST }, { values = S.series.write, role = SECOND } }
-			return graph.area(drawn, count, graph.ceiling(drawn, count, 100 * 1024) * 1.1, w, h)
+			local drawn = { { values = S.series.read, role = role }, { values = S.series.write, role = SECOND_DISK } }
+			return graph.dots(drawn, count, graph.ceiling(drawn, count, 100 * 1024) * 1.1, w, h)
 		end
 	else
-		local share = volume and volume.total > 0 and volume.used / volume.total * 100 or 0
-		spec.big = function(size)
-			return value_text(format.percent(share), format.load_role(share), size)
-		end
 		spec.graph = function(w, h)
 			-- The system measures no reads and writes here: the volumes are what there is to show.
 			local box = b.div():w(w):h(h):no_shrink():col():gap(8):justify_center()
@@ -286,45 +349,44 @@ end
 -- The GPU card: the busiest GPU's load, and what it is made of. With several GPUs the card speaks
 -- of the busiest and says how many there are.
 local function gpu_card()
-	local sample = S.sample
-	local gpus = sample and sample.gpus or {}
-	local first, busiest = gpus[1], gpus[1]
+	local gpus = S.sample and S.sample.gpus or {}
+	local busiest = gpus[1]
 	for _, one in gpus do
 		if one.load > busiest.load then
 			busiest = one
 		end
 	end
 	local load = busiest and busiest.load or 0
-	local role = format.load_role(load)
-	local lines = {}
+	local list = {}
 	if busiest then
-		local memory = nil
-		if busiest.memoryUsed ~= nil and busiest.memoryTotal ~= nil then
-			memory = string.format("%s of %s", format.bytes(busiest.memoryUsed), format.bytes(busiest.memoryTotal))
-		elseif busiest.memoryUsed ~= nil then
-			memory = string.format("%s in use", format.bytes(busiest.memoryUsed))
+		if busiest.memoryUsed ~= nil then
+			list[#list + 1] = { "Memory", short(busiest.memoryUsed) }
 		end
-		if #gpus > 1 then
-			lines[#lines + 1] = dim(string.format("%d GPUs", #gpus))
-			lines[#lines + 1] = quiet(memory or busiest.name)
-		else
-			lines[#lines + 1] = dim(memory or busiest.name)
-			if busiest.celsius ~= nil then
-				lines[#lines + 1] = quiet(string.format("%.0f °C", busiest.celsius))
-			end
+		local values = S.series.gpu
+		local from = math.max(1, #values - cards.window() + 1)
+		local sum, peak, n = 0, 0, 0
+		for index = from, #values do
+			sum += values[index]
+			peak = math.max(peak, values[index])
+			n += 1
+		end
+		if n > 0 then
+			list[#list + 1] = { "Average", format.percent(sum / n) }
+			list[#list + 1] = { "Peak", format.percent(peak) }
 		end
 	end
 	return {
 		key = "gpu",
 		title = "GPU",
-		side = first and #gpus == 1 and first.name or nil,
-		big = function(size)
-			return value_text(format.percent(load), role, size)
+		side = #gpus > 1 and string.format("%d GPUs", #gpus) or (busiest and busiest.name or nil),
+		caption = #gpus > 1 and "The busiest, now" or "Now",
+		number = tostring(math.floor(load + 0.5)),
+		unit = "%",
+		value_role = share_role(load),
+		figures = list,
+		graph = function(w, h, role)
+			return graph.dots({ { values = S.series.gpu, role = role } }, cards.window(), 100, w, h)
 		end,
-		graph = function(w, h)
-			return graph.area({ { values = S.series.gpu, role = role } }, cards.window(), 100, w, h)
-		end,
-		lines = lines,
 	}
 end
 

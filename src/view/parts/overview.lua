@@ -132,12 +132,14 @@ end
 -- has a GPU), the same as gauges on a narrow one. The table is what the page is for; the band is
 -- what is left of the machine around it.
 local CARD_H = 124
--- A page this tall has room for the cards with their value on a line of its own; a taller one for
--- their detail lines too.
+-- A page this tall has room for the cards with their figures on a line of their own; a taller one
+-- for their captions too, and a taller one again for a deeper graph.
 local MIDDLE_CARD_H = 164
 local MIDDLE_PAGE = 600
-local ROOMY_CARD_H = 204
-local ROOMY_PAGE = 900
+local FULL_CARD_H = 214
+local FULL_PAGE = 760
+local ROOMY_CARD_H = 240
+local ROOMY_PAGE = 960
 local CARD_W = 190
 
 function overview.view()
@@ -147,6 +149,8 @@ function overview.view()
 		local h = CARD_H
 		if S.height >= ROOMY_PAGE then
 			h = ROOMY_CARD_H
+		elseif S.height >= FULL_PAGE then
+			h = FULL_CARD_H
 		elseif S.height >= MIDDLE_PAGE then
 			h = MIDDLE_CARD_H
 		end

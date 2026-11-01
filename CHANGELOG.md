@@ -4,8 +4,11 @@
 
 ### Added
 
-- A system monitor for the terminal pane: cards for the CPU, memory, network and disks with the last
-  minute of each as a graph, and a status line with the machine, its uptime and the update interval.
+- A system monitor for the terminal pane: cards for the CPU, memory, network and disks, each in a
+  colour of its own, with the value of the moment large, three figures of what it is made of (the
+  memory's app, wired and compressed and its pressure, the network's upload and totals, the disk's
+  reads, writes and use) and the last minute as a matrix of dots; and a status line with the machine,
+  its uptime and the update interval.
 - Pause and resume the updates (Space, or the status line) and change how often the machine is looked
   at (0.5 to 10 seconds; `+` and `-`, or the status line).
 - In a terminal that shows no views, or with `--once`, a summary of the machine is printed instead;
