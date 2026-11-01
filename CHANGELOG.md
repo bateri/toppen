@@ -13,7 +13,8 @@
 - A table of the processes under the cards: sort by any column, filter (words, `/regex/`, `user:`,
   `pid:`, `state:`, `cpu>`, `mem>`, `!` to negate), a tree, groups by name, folded branches that
   carry the totals of what they hide, the subtree of one process, marks, columns to show and hide,
-  and an order that stays still for a moment while the pointer moves over it or after a key.
+  and an order that stays still for a moment while the pointer moves over it or after a key; a row is chosen, not
+  a cell.
 - The summary of `--once`, the pipe and `--json` lists the busiest processes.
 - The details of a process in a panel beside the table (over it in a narrow pane): graphs of what it
   takes, the whole command line, working folder, parents and children (each one press away) and

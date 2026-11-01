@@ -802,6 +802,8 @@ function tab.view(width)
 		cell = cell,
 		state = G,
 		numbers = false,
+		-- A process is acted on, not a value in it: the table chooses rows.
+		select = "row",
 		row_height = ROW,
 		head_height = ROW + 4,
 	})
