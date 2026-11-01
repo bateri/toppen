@@ -8,8 +8,12 @@
 pub mod control;
 pub mod gpu;
 pub mod history;
+// What a Mac's registry says is read by code every system builds, so that its parsing is tested
+// everywhere; only a Mac calls it, and on another system the clippy gate sees no caller.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod iokit;
 pub mod linux;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod macos;
 pub mod ports;
 pub mod system;

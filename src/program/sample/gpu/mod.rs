@@ -4,6 +4,8 @@
 //! ([`nvml`]). A machine none of these speak for has no GPU as far as this program can tell, and
 //! then no card is drawn.
 
+// Built on every system for its tests; only a Mac reads the registry it parses.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub mod apple;
 pub mod linux_drm;
 pub mod nvml;
