@@ -460,6 +460,9 @@ mod tests {
     fn a_start_that_does_not_hold_is_gone_and_nothing_is_sent() {
         let mut child = Sleeper::start();
         let (pid, start) = child.key();
+        // The child has the nice value of the test, whatever that is where it runs.
+        // SAFETY: reads the priority of the test's own child.
+        let nice = unsafe { libc::getpriority(libc::PRIO_PROCESS, pid) };
         // The pid is the child's; the second it started in is not: the name is a stranger's.
         for wrong in [start + 1000, start.saturating_sub(1000)] {
             assert_eq!(
@@ -479,7 +482,7 @@ mod tests {
         );
         // And the nice value did not change.
         // SAFETY: reads the priority of the test's own child.
-        assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, pid) }, 0);
+        assert_eq!(unsafe { libc::getpriority(libc::PRIO_PROCESS, pid) }, nice);
     }
 
     #[test]
