@@ -424,7 +424,7 @@ function ports.action(action)
 			sort_by(action.column)
 		elseif kind == "open" then
 			ports.show_process()
-		elseif kind == "menu" then
+		elseif kind == "context" then
 			return row_menu(action.row, action.at)
 		end
 		return true

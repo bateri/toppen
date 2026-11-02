@@ -735,7 +735,7 @@ function tab.action(action)
 			elseif row ~= nil and act.detail_open ~= nil then
 				act.detail_open(row)
 			end
-		elseif kind == "menu" then
+		elseif kind == "context" then
 			return row_menu(action.row, action.at)
 		elseif kind == "need" then
 			fill()
