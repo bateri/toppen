@@ -4,15 +4,7 @@ A system monitor for the terminal pane, in the way of `top` and `btop`: what the
 as cards with graphs and a table of its processes, drawn by the terminal in its own font and colours. It runs on the machine it is
 started on, so over plain `ssh` it shows the server's own CPU, memory, network, disks and GPU.
 
-toppen is a [pencere](https://github.com/bateri/pencere) app: the program is Rust, the view is a
-page of pencere's kit, and both are one file. A terminal that hosts pencere (bateri) shows the view
-in the pane; any other terminal is given a summary of the machine, as `top -l 1` prints one.
-
-![The overview](docs/overview.png)
-
-![The details of a process](docs/details.png)
-
-![The processor at length](docs/card-cpu.png)
+<img src="docs/overview.png" width="720" alt="The overview">
 
 ## Install
 
@@ -22,6 +14,9 @@ arm64 and x86_64:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bateri/toppen/main/install.sh | sh
 ```
+
+To see the view you need a terminal that hosts pencere views: [bateri](https://github.com/bateri/bateri), from its 0.23. Any
+other terminal is given a summary of the machine, as `top -l 1` prints one.
 
 The installer takes the newest release (or `TOPPEN_VERSION=0.1.0`), checks it against the release's
 `SHA256SUMS`, and puts it in `~/.local/bin` (`TOPPEN_INSTALL=<dir>` puts it elsewhere). A file a
@@ -34,6 +29,9 @@ either.
 
 ## Use
 
+toppen is a [pencere](https://github.com/bateri/pencere) app: the program is Rust, the view is a
+page of pencere's kit, and both are one file.
+
 ```
 toppen                    # the monitor, in a terminal that shows pencere views
 toppen --once             # print a summary of the machine and exit
@@ -41,8 +39,27 @@ toppen --json             # the same summary, as one line of JSON
 toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
 ```
 
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/details.png" width="100%" alt="The details of a process"><br>The details of a process</td>
+    <td width="33%" valign="top"><img src="docs/card-cpu.png" width="100%" alt="The processor at length"><br>The processor at length</td>
+    <td width="33%" valign="top"><img src="docs/palette.png" width="100%" alt="The palette"><br>The palette</td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/settings.png" width="100%" alt="The settings"><br>The settings</td>
+    <td width="33%" valign="top"><img src="docs/help.png" width="100%" alt="The keys"><br>The keys</td>
+  </tr>
+</table>
+
+### Updates
+
 - **Space** pauses the updates and resumes them; the status line says when they are paused.
 - **+** and **-** change how often the machine is looked at, from 0.5 to 10 seconds.
+
+The program looks at the machine only while its view is open and the updates are not paused.
+
+### The table
+
 - The table lists the processes, the busiest first. Press a column's name to sort by it (again to
   reverse), drag the edge of a name to size the column, right-press a name to show or hide columns.
   **<** and **>** step the sort column, **r** reverses it.
@@ -54,6 +71,9 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
 - For two seconds after the pointer moves over the table, and three after a key or a click, the rows
   keep their places however the numbers change, so a row does not slip away as it is aimed at; a
   pointer at rest holds nothing. "Order held" says how many would have moved, and pressing it lets go.
+
+### A process
+
 - **Enter** (or a double click) shows a process in a panel beside the table: what it takes, as graphs
   of the last minutes, its whole command line, where it works, who started it and what it started
   (press one to go to it), and its environment (what looks like a secret stays hidden; the eye beside it shows it).
@@ -65,6 +85,9 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   has these and more. A process of another user is shown, and left alone unless toppen runs as root.
   A signal names the process by its id and the second it started in: if it ended meanwhile and its
   id was used again, nothing is sent.
+
+### The cards
+
 - Press a card (or **1** CPU, **2** memory, **3** network, **4** disk, **5** GPU) for its details in place of the
   table; **Esc** goes back. CPU: every processor with its own graph, frequencies and temperatures;
   memory: what it is made of (app, wired, compressed, cached files, free) and swap; network: each
@@ -78,6 +101,9 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   installed. A machine with none has four cards, and no key for a fifth. With several GPUs the card
   speaks of the busiest and says how many there are; the details list each. The disk's reads and
   writes come from the storage drivers on a Mac and from `/proc/diskstats` on Linux.
+
+### Listening ports
+
 - **p** (or the switch beside the filter) shows the listening ports instead of the table: each socket
   that waits for connections (TCP) or is bound to a port (UDP), the address it is on and the process
   that holds it. Filter by `:3000`, a name or a user; **Enter** shows the process in the table with its
@@ -85,6 +111,9 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   **a** copies the address. In the table, `port:3000` leaves the processes that listen there. Where the
   system does not let you look into a process (another user's, unless toppen runs as root) its sockets
   are listed without it, or not at all on macOS.
+
+### Keys and the mouse
+
 - Everything the keys do can be pressed with the mouse, and everything the mouse does has a key (or a
   row in the palette): **Cmd+K** (or **Ctrl+K**) opens the palette, which finds any command that can
   be done now, with its keys, and turns a name you type into a filter of the table (`:3000` into the
@@ -92,8 +121,6 @@ toppen --interval 2       # look at the machine every 2 seconds (0.5 to 10)
   keys it has now.
 - htop's keys are there as second keys: **F1** the keys, **F2** the settings, **F4** the filter,
   **F5** the tree, **F6** the next sort column, **F7** the priority, **F9** a signal.
-
-![The palette](docs/palette.png)
 
 ### Settings
 
@@ -123,12 +150,6 @@ edited by hand:
   to Cmd+9), when it is Option and a letter, or when another command has it.
 - A file that cannot be read is left exactly where it is: toppen starts with the defaults, says so
   once, and writes nothing over it until it is fixed or removed.
-
-![The settings](docs/settings.png)
-
-![The keys](docs/help.png)
-
-The program looks at the machine only while its view is open and the updates are not paused.
 
 ## How it works
 
