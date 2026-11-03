@@ -32,8 +32,6 @@ open NVIDIA's library, so a Linux file from a release shows no NVIDIA card. A bu
 machine (`cargo build --release`) does, and so do the AMD and Intel cards of the DRM drivers in
 either.
 
-There is no release yet; until there is one, build it from this repository (below).
-
 ## Use
 
 ```
