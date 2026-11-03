@@ -3,7 +3,7 @@
 # gate and `make dev` are here.
 .PHONY: pin fmt lint test test-page test-tools check-timing shots check build dist sums release-prepare rehearse pencere-src pencere fake-host pencere-ref dev
 
-# pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
+# pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs toppen under and the stand-in
 # terminal the program's tests run it in, which are built from it in .cache/pencere. To work against
 # a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
@@ -22,14 +22,14 @@ PENCERE_GIT = https://github.com/bateri/pencere
 # builds at Cargo.lock's pencere.
 FAKE_HOST ?= $(PENCERE_CACHE)/target/debug/pencere-fake-host
 
-# pin: main is built on a pencere anyone can fetch, the commit Cargo.lock names. A branch that waits
+# pin: main is built on a pencere anyone can fetch, the release Cargo.lock names. A branch that waits
 # for a pencere not pushed yet takes it from a checkout on this machine with a [patch] of Cargo.toml;
 # that section is refused on main and on what is to be merged into it.
 pin:
 	@if grep -q '^\[patch' Cargo.toml; then \
 		branch="$$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"; \
 		if [ "$$branch" = main ] || [ "$${GITHUB_REF:-}" = refs/heads/main ] || [ "$${GITHUB_BASE_REF:-}" = main ]; then \
-			echo "pin: Cargo.toml takes pencere from a [patch]: main is built on a pushed pencere (move the rev in Cargo.toml, drop the patch)"; exit 1; \
+			echo "pin: Cargo.toml takes pencere from a [patch]: main is built on a pushed pencere (move the version in Cargo.toml, drop the patch)"; exit 1; \
 		fi; \
 		echo "pin: Cargo.toml takes pencere from a [patch] ($$branch): main will refuse it"; \
 	fi

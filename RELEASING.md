@@ -19,9 +19,8 @@ as the change.
 ## pencere
 
 toppen is built against the `pencere` crate, and the gate plays it under pencere's stand-in terminal
-of the same pencere; `Cargo.lock` is the one place pencere is pinned. While toppen needs what
-pencere's `main` has and no release of it does, `Cargo.toml` takes every pencere crate from git at one
-commit (`rev = "…"`, written whole). `make dev` takes the `pencere` command it runs toppen under, and
+of the same pencere; `Cargo.lock` is the one place pencere is pinned. `Cargo.toml` takes it from pencere's release on
+crates.io. `make dev` takes the `pencere` command it runs toppen under, and
 `make fake-host` the stand-in terminal the tests run it in, from the same pencere: `make
 pencere-src` fetches the commit, or the tag `crates-v<version>` of a release on crates.io, that
 `Cargo.lock` names (`node tools/release.mjs pencere-ref`) into `.cache/pencere`, and the targets
