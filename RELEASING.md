@@ -7,7 +7,7 @@ it with `install.sh` (see the README).
 
 Each file is the Rust program with its page (`src/view/`, `src/assets/`) carried in it. The release
 workflow builds each on a runner of its own system and architecture, with the toolchain the gate runs
-with (Rust 1.88), from nothing. A static Linux file cannot open NVIDIA's library at run time, so the
+with (Rust 1.99), from nothing. A static Linux file cannot open NVIDIA's library at run time, so the
 NVIDIA cards are read only by a build made on the machine; the README says so.
 
 ## Versions and the changelog

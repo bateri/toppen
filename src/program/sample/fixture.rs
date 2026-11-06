@@ -653,7 +653,7 @@ impl Fixture {
         self.specs
             .iter()
             .enumerate()
-            .filter(|(index, spec)| !spec.churn || (tick / 4 + *index as u64) % 3 != 0)
+            .filter(|(index, spec)| !spec.churn || !(tick / 4 + *index as u64).is_multiple_of(3))
             .map(|(index, spec)| {
                 let seed = tick * 7919 + index as u64;
                 let busy = spec.cpu * (0.5 + wave(tick, 30 + index as u64 % 40, index as u64))

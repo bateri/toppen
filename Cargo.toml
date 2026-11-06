@@ -2,7 +2,7 @@
 name = "toppen"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.99"
 license = "GPL-3.0-or-later"
 description = "A system monitor in the terminal pane: CPU, memory, network, disks, GPU and a process table you can sort, filter and signal with the keyboard or the mouse"
 repository = "https://github.com/bateri/toppen"
@@ -18,7 +18,7 @@ pencere = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # What the machine measures: CPUs, memory, processes, network interfaces, disks, sensors. 0.38 is the
-# last release that builds with the toolchain the pens share (rust 1.88).
+# last release that builds with rust 1.88, the toolchain the pens shared before 1.99.
 sysinfo = { version = "0.38", default-features = false, features = ["system", "network", "disk", "component", "user"] }
 # The filter's /regular expressions/: the engine that runs in time linear in the text (no
 # back-references, no look-around), MIT or Apache-2.0, and already in Cargo.lock under pencere.

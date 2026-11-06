@@ -222,13 +222,13 @@ impl Watch {
             if ended() || state.closed {
                 return None;
             }
-            if state.seq > self.seen || state.touches > self.touched {
-                if let Some((number, sample)) = state.recent.back() {
-                    let found = Arc::clone(sample);
-                    self.seen = *number;
-                    self.touched = state.touches;
-                    return Some(found);
-                }
+            if (state.seq > self.seen || state.touches > self.touched)
+                && let Some((number, sample)) = state.recent.back()
+            {
+                let found = Arc::clone(sample);
+                self.seen = *number;
+                self.touched = state.touches;
+                return Some(found);
             }
             state = self.shared.wait(state);
         }

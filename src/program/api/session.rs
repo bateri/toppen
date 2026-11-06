@@ -165,13 +165,13 @@ struct Card {
 /// Which card's details the person has open. The program reads what costs more (the sensors) only
 /// while one is.
 fn card(session: &Session, params: CardParams) -> Result<Card, Failure> {
-    if let Some(name) = &params.card {
-        if !CARDS.contains(&name.as_str()) {
-            return Err(Failure::BadParams(format!(
-                "card is one of {}, not {name:?}",
-                CARDS.join(", ")
-            )));
-        }
+    if let Some(name) = &params.card
+        && !CARDS.contains(&name.as_str())
+    {
+        return Err(Failure::BadParams(format!(
+            "card is one of {}, not {name:?}",
+            CARDS.join(", ")
+        )));
     }
     session.sampler.set_detail(params.card.is_some());
     Ok(Card { card: params.card })

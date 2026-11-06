@@ -174,7 +174,7 @@ make build       # target/release/toppen
 make dev         # run it from its files in a pane that hosts pencere
 ```
 
-`make check` needs Rust 1.88 or later and Node 22 (for the installer's tests and the release tools).
+`make check` needs Rust 1.99 or later and Node 22 (for the installer's tests and the release tools).
 It is the gate GitHub runs on every push and pull request, on Linux and macOS; how a release is made
 is in RELEASING.md.
 

@@ -81,10 +81,10 @@ impl Ports {
     #[must_use]
     pub fn listeners(&self) -> Arc<Vec<Listener>> {
         let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((at, found)) = last.as_ref() {
-            if at.elapsed() < FRESH {
-                return Arc::clone(found);
-            }
+        if let Some((at, found)) = last.as_ref()
+            && at.elapsed() < FRESH
+        {
+            return Arc::clone(found);
         }
         let found = Arc::new(self.source.scan());
         *last = Some((Instant::now(), Arc::clone(&found)));

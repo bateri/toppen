@@ -53,10 +53,10 @@ fn icon(png: &[u8], theme: IconTheme) -> Icon {
             .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
             .map(u32::from_be_bytes)
     };
-    if png.get(12..16) == Some(b"IHDR") {
-        if let (Some(width), Some(height)) = (number(16), number(20)) {
-            icon.sizes = vec![format!("{width}x{height}")];
-        }
+    if png.get(12..16) == Some(b"IHDR")
+        && let (Some(width), Some(height)) = (number(16), number(20))
+    {
+        icon.sizes = vec![format!("{width}x{height}")];
     }
     icon
 }

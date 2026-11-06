@@ -373,38 +373,38 @@ impl Table {
     }
 
     pub fn apply(&mut self, change: Change) {
-        if let Some(sort) = change.sort {
-            if sort != self.sort {
-                self.sort = sort;
-                self.reorder();
-            }
+        if let Some(sort) = change.sort
+            && sort != self.sort
+        {
+            self.sort = sort;
+            self.reorder();
         }
-        if let Some(descending) = change.descending {
-            if descending != self.descending {
-                self.descending = descending;
-                self.reorder();
-            }
+        if let Some(descending) = change.descending
+            && descending != self.descending
+        {
+            self.descending = descending;
+            self.reorder();
         }
-        if let Some(mode) = change.mode {
-            if mode != self.mode {
-                self.mode = mode;
-                self.reorder();
-            }
+        if let Some(mode) = change.mode
+            && mode != self.mode
+        {
+            self.mode = mode;
+            self.reorder();
         }
-        if let Some(text) = change.filter {
-            if text != self.filter_text {
-                match Filter::parse(&text) {
-                    Ok(filter) => {
-                        self.filter = filter;
-                        self.error = None;
-                    }
-                    // The last filter that was good stays in force, so that a half-typed pattern does not
-                    // empty the table.
-                    Err(why) => self.error = Some(why),
+        if let Some(text) = change.filter
+            && text != self.filter_text
+        {
+            match Filter::parse(&text) {
+                Ok(filter) => {
+                    self.filter = filter;
+                    self.error = None;
                 }
-                self.filter_text = text;
-                self.reorder();
+                // The last filter that was good stays in force, so that a half-typed pattern does not
+                // empty the table.
+                Err(why) => self.error = Some(why),
             }
+            self.filter_text = text;
+            self.reorder();
         }
         if let Some(hold) = change.hold {
             self.hold = hold;
@@ -413,11 +413,11 @@ impl Table {
                 self.last.clear();
             }
         }
-        if let Some(root) = change.root {
-            if root != self.root {
-                self.root = root;
-                self.reorder();
-            }
+        if let Some(root) = change.root
+            && root != self.root
+        {
+            self.root = root;
+            self.reorder();
         }
         if let Some(window) = change.window {
             self.window = window;
@@ -796,12 +796,11 @@ impl Table {
             if keeps && !self.last.is_empty() {
                 let present: HashSet<Key> = procs.iter().map(Process::key).collect();
                 for (index, id) in self.shown.iter().enumerate() {
-                    if let Id::Process(key) = id {
-                        if !present.contains(key) {
-                            if let Some(process) = self.last.get(key) {
-                                self.exited.push((index, process.clone()));
-                            }
-                        }
+                    if let Id::Process(key) = id
+                        && !present.contains(key)
+                        && let Some(process) = self.last.get(key)
+                    {
+                        self.exited.push((index, process.clone()));
                     }
                 }
             }

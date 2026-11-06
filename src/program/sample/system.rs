@@ -225,7 +225,7 @@ impl System {
     fn processes(&mut self, seconds: f64) -> Vec<Process> {
         self.sys
             .refresh_processes_specifics(ProcessesToUpdate::All, true, process_kind());
-        if self.ticks % USERS_EVERY == 0 {
+        if self.ticks.is_multiple_of(USERS_EVERY) {
             self.users.refresh();
         }
         #[allow(clippy::cast_precision_loss)]
@@ -448,7 +448,7 @@ impl Source for System {
         } else {
             Vec::new()
         };
-        if self.ticks % VOLUMES_EVERY == 0 {
+        if self.ticks.is_multiple_of(VOLUMES_EVERY) {
             self.disks
                 .refresh_specifics(true, DiskRefreshKind::nothing().with_storage());
             self.volumes = volumes_of(&mounts(&self.disks));
