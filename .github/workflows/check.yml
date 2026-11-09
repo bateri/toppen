@@ -25,7 +25,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Node runs the installer's tests (`make test-tools`) and tools/release.mjs.
+      # Node runs the installer's and the release checks' tests (`make test-tools`).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -49,7 +49,7 @@ jobs:
           {
             echo "### What this run was held to"
             echo
-            echo "pencere at \`$(node tools/release.mjs pencere-ref)\` (\`Cargo.lock\`): the crate the program is built on, and the stand-in terminal its tests ran it in."
+            echo "pencere at \`$(make -s pencere-ref)\` (\`Cargo.lock\`): the crate the program is built on, and the stand-in terminal its tests ran it in."
             echo
             echo "Not held to: the kit's 250 ms a call of the page, which the page's tests only keep to on a machine at rest (\`make check-timing\`); they ran with 10 s."
           } >> "$GITHUB_STEP_SUMMARY"

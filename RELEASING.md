@@ -1,74 +1,99 @@
 # Releasing
 
-A release is three files on a GitHub release tagged `v<x.y.z>`, `toppen-<version>-<target>` for
-macOS on Apple silicon and Linux on arm64 and x86_64 (linked statically, with musl), with a
-`SHA256SUMS`. There is no Intel Mac file, because bateri runs on Apple silicon only. People install
-it with `install.sh` (see the README).
-
-Each file is the Rust program with its page (`src/view/`, `src/assets/`) carried in it. The release
-workflow builds each on a runner of its own system and architecture, with the toolchain the gate runs
-with (Rust 1.99), from nothing. A static Linux file cannot open NVIDIA's library at run time, so the
-NVIDIA cards are read only by a build made on the machine; the README says so.
+toppen is released as five files on a GitHub release tagged `v<x.y.z>` here: the program for
+macOS on Apple silicon (`arm64`) and for Linux on `arm64` and `x86_64`, named
+`toppen-<version>-<target>`, a `SHA256SUMS` that names the three, and an `app.json` with its
+signature `app.json.sig`, which a terminal that follows toppen reads (pencere's `apps.md`). There is no Intel Mac file:
+bateri, the terminal that shows the page, runs on Apple silicon only.
+Every step a machine can check is in `tools/release.mjs`, behind the `make` targets below. This
+file is the order of the steps and the reasons for them.
 
 ## Versions and the changelog
 
-[Semantic versioning](https://semver.org/); while it is `0.x`, a minor release may change behaviour.
-Every change a user would notice goes under `## [Unreleased]` in `CHANGELOG.md`, in the same commit
-as the change.
+toppen follows [semantic versioning](https://semver.org/). While it is `0.x`, a minor release
+may change what the previous one did.
 
-## pencere
+Every change a user would notice goes under `## [Unreleased]` in `CHANGELOG.md`
+([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)), in the same commit as the change. A
+release only moves that section under a version and a date; it does not write it.
 
-toppen is built against the `pencere` crate, and the gate plays it under pencere's stand-in terminal
-of the same pencere; `Cargo.lock` is the one place pencere is pinned. `Cargo.toml` takes it from pencere's release on
-crates.io. `make dev` takes the `pencere` command it runs toppen under, and
-`make fake-host` the stand-in terminal the tests run it in, from the same pencere: `make
-pencere-src` fetches the commit, or the tag `crates-v<version>` of a release on crates.io, that
-`Cargo.lock` names (`node tools/release.mjs pencere-ref`) into `.cache/pencere`, and the targets
-build there. Nothing else says which pencere: moving it is a change of `Cargo.toml` and `Cargo.lock`.
+## What a release needs
 
-A release of toppen is built with that pencere, a commit or a release alike: Cargo builds it into
-each file from the source `Cargo.lock` names, on the file's own runner, and nothing of pencere's is
-downloaded ready-made. `make rehearse` says which pencere it is.
+Each of the three files is the Rust program with its page (`src/view/`) and pictures
+(`src/assets/`) carried in it, built by cargo for one target. So a release needs:
+
+- Rust 1.99, the toolchain the gate runs with, on a machine of each target: a Mac on Apple silicon,
+  and Linux on `arm64` and on `x86_64`, each with its target added (`rustup target add
+  aarch64-unknown-linux-musl`, and so on) and, on Linux, `musl-tools`. Each file is built where it
+  runs, as textpen's are: no emulation and no cross toolchain.
+- pencere as `Cargo.lock` takes it: cargo builds it into each file from that source, the commit of
+  its repository `Cargo.toml` names. Nothing of pencere's is downloaded ready-made.
+- Node, for `tools/release.mjs`: it is the one step of a release that is not cargo's.
+- `gh`, logged in, to make the GitHub release.
+- The signing key, on the maintainer's machine: `app.json` is signed with the key `pencere key`
+  makes, kept in `~/.config/pencere/signing.key` (`PENCERE_SIGNING_KEY` names another file). It is
+  the "bateri" key, the one bateri carries the public half of to follow toppen without asking:
+  whoever has the file can release as toppen, so it is never committed and never on a machine
+  that builds in a workflow, and it has a copy somewhere safe. A release signed with another key
+  is a release bateri asks its people about.
+- A `pencere` command that has `dist`, the one `Cargo.lock` takes: `make pencere` builds it
+  (`PENCERE` names another).
+
+A static Linux file cannot open NVIDIA's library at run time, so the NVIDIA cards are read only by a
+build made on the machine; the README says so.
+
+The files are built on the maintainers' machines and not by a workflow: an executable that a
+workflow built is one that a pushed tag changes without a maintainer's decision. CI runs the gate
+(`make check`) on Linux and macOS on every push and pull request; a release runs it again here.
 
 ## A release
 
-1. `make release-prepare VERSION=<x.y.z>` sets the version in `Cargo.toml` and `Cargo.lock` and
-   dates the changelog. Commit it as `Release toppen <x.y.z>` and push it to `main`.
-2. The gate (`check.yml`) runs on the push. When it is green, the release workflow
-   (`release.yml`) starts.
-3. If the version has no tag yet, the workflow checks the version and changelog, builds the three
-   files, sums them, checks them and records their provenance, pushes the tag, and writes a
-   **draft** GitHub release.
-   Before the first release, while the changelog has no release section, a push releases nothing.
-4. The run waits in the `release` environment. GitHub notifies the reviewers; one of them opens
-   the run and chooses **Review deployments → Approve**. The workflow then checks the files again
-   and makes the draft public as **Latest**. Rejected, nothing is published.
-5. Check it: `gh release view v<x.y.z>`, and run `install.sh` on a machine.
+From a clean `main`:
 
-**One at a time.** The release commit is pushed alone, and nothing else is pushed to `main` until the
-run has been approved or rejected: GitHub holds one run behind the one that waits for approval, and a
-later push replaces it. The checks judge the newest commit of a push, so a release commit pushed with
-a commit that adds to `## [Unreleased]` is refused (*Unreleased is not empty*).
+1. `make release-prepare VERSION=0.2.0` sets the version in `Cargo.toml` and `Cargo.lock` (the
+   program says that version: `toppen --version`), and turns `## [Unreleased]` into
+   `## [0.2.0] - <today>` with a new, empty `## [Unreleased]` above it. Read the diff, then commit it
+   as `Release toppen 0.2.0`.
+2. From that commit, on a clean tree, on a machine of each target: `make dist
+   TARGET=<target>`, which builds `dist/release/toppen-0.2.0-<target>`. Gather the three in
+   `dist/release` on the machine that releases, then `make sums` writes `SHA256SUMS`, and with
+   `pencere dist` the `app.json` and `app.json.sig`: what the program needs of a terminal is not
+   typed, `pencere dist` starts the file of this machine's target and reads what it says, and the
+   earlier releases that `app.json` lists come from the `app.json` of the release before (the
+   latest on GitHub; `DIST_FLAGS="--previous <file>"` names another, `--previous none` is for a
+   first release). The file names carry the version, so a `dist/release` built before the version moved is refused; nothing can
+   tell which source a file of the right version was built from, so build them after the commit
+   and not before.
+3. `make release` runs the gate (`make check`; `make fake-host` builds the stand-in terminal its
+   tests play toppen in), then the release checks, then makes the annotated tag `v0.2.0` with the
+   changelog section as its message. Nothing is pushed.
+4. `make publish` pushes `main` and the tag in one atomic push, then makes the GitHub release
+   with the changelog section as its notes and the five files.
+5. Check it: `gh release view v0.2.0`.
 
-**If something fails.** Before the tag, nothing is public: fix it and push again. A tag is never
-moved; a broken release is followed by a new version. A release that stopped after its tag is
-finished by running the workflow by hand on `main` (**Run workflow**, or
-`gh workflow run release.yml`).
+If a check fails, nothing has left the machine: fix it, amend or add a commit, and run the step
+again. A tag that was made but not pushed can be deleted with `git tag -d <tag>`. A pushed tag is
+never moved; a broken release is followed by a new version. If the push went and `gh` failed, the
+tag is on `origin` and the release is not: make it by hand with `gh release create v0.2.0
+--verify-tag` and the files of `dist/release`.
 
-**Trying it.** `make rehearse` runs the release checks on any branch. **Run workflow** with
-**rehearse** builds on any branch and publishes nothing.
+### What the release checks refuse
 
-### What the checks refuse
+- a version that is not after the last, or a `Cargo.toml` that disagrees with the newest changelog
+  section;
+- an `## [Unreleased]` section that still holds changes, or an empty release section;
+- a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
+  `origin/main`;
+- a tag that already exists, here or on `origin`, or a release that already exists on GitHub;
+- a `dist/release` that is not exactly the three files of this version, `SHA256SUMS`, `app.json` and
+  `app.json.sig`, with the sum of each as listed, or whose executable for this machine does not say
+  this version;
+- an `app.json` that its signature does not belong to (by the key it names), that is signed with
+  another key than the "bateri" key (a published release cannot be taken back, and every bateri
+  would turn it away), that is of another app or version, that does not name exactly the three targets at addresses ending in the files'
+  names, or whose sums are not those of `SHA256SUMS`.
 
-- a `Cargo.lock` that takes pencere's packages from more than one place;
-- a version that is not after the last, or a `Cargo.toml` that disagrees with the changelog;
-- a non-empty `## [Unreleased]`, or an empty release section;
-- a commit whose gate is not green, a tag on another commit, or a release that is public already;
-- files that are not exactly the three executables of this version with correct sums and this
-  workflow's attestation; on its own machine, an executable that does not say it is this version.
+## Who releases
 
-## Settings the workflow relies on
-
-GitHub → Settings → Environments → `release`: **Required reviewers**, and deployments from `main`
-only. There is no secret or token. The publishing job refuses to run if the environment has no
-reviewers, because GitHub would otherwise create it empty and publish without asking.
+`make publish` makes the release under the project's name. Only a maintainer runs it. Everything
+before it (prepare, commit, dist, tag) can be undone locally.

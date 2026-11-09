@@ -1,18 +1,17 @@
 # toppen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page test-tools check-timing shots check build dist sums release-prepare rehearse pencere-src pencere fake-host pencere-ref dev
+.PHONY: pin fmt lint test test-page test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
-# pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
-# built on is of it, and so are the `pencere` command `make dev` runs toppen under and the stand-in
-# terminal the program's tests run it in, which are built from it in .cache/pencere. To work against
-# a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
+# pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
+# built on is of it, and so are the `pencere` command `make dev` runs toppen under and `make sums`
+# signs a release with, and the stand-in terminal the program's tests run it in, which are built from
+# it in .cache/pencere. To work against a checkout you are changing, say so; one that is not at
+# Cargo.lock's ref is said to be so, and used:
 #
 #   make dev PENCERE_SRC=../pencere
-#
-# `node tools/release.mjs pencere-ref` reads the ref from Cargo.lock: the commit, or the tag of a release
-# on crates.io.
-PENCERE_REF = $(shell node tools/release.mjs pencere-ref)
+# The ref is the commit Cargo.lock takes it at, or the tag of the crates' release it takes.
+PENCERE_REF = $(shell awk '/^name = "pencere"$$/ { getline v; getline s; gsub(/version = |"/, "", v); if (s ~ /^source = "registry/) print "crates-v" v; else { sub(/.*\#/, "", s); sub(/"$$/, "", s); print s } exit }' Cargo.lock)
 PENCERE_CACHE = .cache/pencere
 PENCERE_SRC ?= $(PENCERE_CACHE)
 PENCERE ?= $(PENCERE_SRC)/target/release/pencere
@@ -69,9 +68,10 @@ shots:
 	cargo test --locked --bin toppen page_shots:: -- --ignored
 
 # test-tools runs the tests of the installer (install.sh) against a directory that stands in for
-# GitHub: nothing in them reaches the network.
+# GitHub: nothing in them reaches the network, and the release checks (tools/release-files.mjs),
+# against a directory of their own.
 test-tools:
-	node --test test/install.test.mjs
+	node --test test/install.test.mjs test/release.test.mjs
 
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests, the
 # installer's tests.
@@ -81,42 +81,11 @@ check: pin lint test test-page test-tools
 build:
 	cargo build --locked --release
 
-# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
-# toppen-<version>-<target>. The release workflow runs it on a machine of each of the three targets
-# toppen ships (Apple silicon Macs and both Linux architectures, the Linux ones linked statically
-# with musl; bateri, the terminal that shows the page, runs on Apple silicon only), then `make sums`
-# where the three files are together.
-TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
-PACKAGE_VERSION = $(shell node tools/release.mjs version)
-
-dist:
-	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
-	cargo build --locked --release --target $(TARGET)
-	mkdir -p dist/release
-	cp target/$(TARGET)/release/toppen dist/release/toppen-$(PACKAGE_VERSION)-$(TARGET)
-
-# sums writes the SHA256SUMS of the files of dist/release, and checks them.
-sums:
-	cd dist/release && { sha256sum toppen-* 2>/dev/null || shasum -a 256 toppen-*; } > SHA256SUMS
-	@cat dist/release/SHA256SUMS
-	node tools/release.mjs dist dist/release
-
-# release-prepare sets the version and dates the changelog's Unreleased section.
-release-prepare:
-	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
-	node tools/release.mjs prepare $(VERSION)
-
-# rehearse runs the checks of a release of the prepared version, on any branch. It changes nothing:
-# a release is the commit of release-prepare pushed to main, which the release workflow tags,
-# builds and drafts once the gate is green, and publishes when a maintainer approves (RELEASING.md).
-rehearse:
-	node tools/release.mjs rehearse
-
 # pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache (one checkout,
 # moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).
 pencere-src:
 	@command -v cargo >/dev/null || { echo "pencere: cargo is not installed: pencere is built from its source (https://rustup.rs)"; exit 1; }
-	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere from $(PENCERE_GIT) at a commit"; exit 1; }; \
+	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere"; exit 1; }; \
 	if [ "$(PENCERE_SRC)" = "$(PENCERE_CACHE)" ]; then \
 		if [ "$$(cat $(PENCERE_CACHE).ref 2>/dev/null)" != "$$ref" ]; then \
 			echo "pencere: fetching $(PENCERE_GIT) at $$ref into $(PENCERE_CACHE)"; \
@@ -127,7 +96,8 @@ pencere-src:
 		fi; \
 	else \
 		head=$$(git -C "$(PENCERE_SRC)" rev-parse HEAD 2>/dev/null); \
-		[ "$$head" = "$$ref" ] || \
+		want=$$(git -C "$(PENCERE_SRC)" rev-parse -q --verify "$$ref^{commit}" 2>/dev/null); \
+		[ -n "$$head" ] && [ "$$head" = "$$want" ] || \
 			echo "pencere: $(PENCERE_SRC) is at $${head:-no commit}, not at $$ref (Cargo.lock) that toppen is built with"; \
 	fi
 
@@ -148,3 +118,48 @@ pencere-ref:
 # when one of it does.
 dev: pencere
 	"$(PENCERE)" dev
+
+# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
+# toppen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
+# statically with musl (bateri, the terminal that shows the page, runs on Apple silicon only).
+# Each is built on a machine of its own target, with that target added to the toolchain; `make sums`
+# then names the three where they are together, and signs the app.json that says what they are.
+TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
+
+dist:
+	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
+	cargo build --locked --release --target $(TARGET)
+	mkdir -p dist/release
+	cp target/$(TARGET)/release/toppen dist/release/toppen-$(PACKAGE_VERSION)-$(TARGET)
+
+# sums writes the SHA256SUMS of the three files of dist/release, then the app.json that names them
+# and its signature (`pencere dist`, which signs with the key `pencere key` made: ~/.config/pencere/
+# signing.key, or the one PENCERE_SIGNING_KEY names). A terminal that follows toppen reads those
+# two. What the program needs of its terminal in app.json comes from the program itself, the file
+# of this machine's target, started once. DIST_FLAGS goes to `pencere dist`: --base, --previous.
+#
+# On release day PENCERE must be a pencere that has `dist` and is the one Cargo.lock takes
+# (PENCERE_REF): `make pencere` builds it. A release made with another one has an app.json that
+# the pencere toppen is built with did not write.
+DIST_FLAGS ?=
+sums:
+	cd dist/release && { sha256sum toppen-* 2>/dev/null || shasum -a 256 toppen-*; } > SHA256SUMS
+	@cat dist/release/SHA256SUMS
+	@test -x "$(PENCERE)" || { echo "sums: no pencere at $(PENCERE): make pencere, or PENCERE=<a pencere command that has dist>"; exit 1; }
+	"$(PENCERE)" dist --files dist/release $(DIST_FLAGS) $(PACKAGE_VERSION)
+
+# release-prepare sets the version and dates the changelog's Unreleased section.
+release-prepare:
+	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
+	node tools/release.mjs prepare $(VERSION)
+
+# release runs the gate and the release checks (dist/release holds the three files of this
+# version and their SHA256SUMS, made after the release commit), then tags. Nothing is pushed.
+release: check
+	node tools/release.mjs tag
+
+# publish pushes main and the tag, then makes the GitHub release with the three files and
+# SHA256SUMS. Publishing: run on the maintainer's word.
+publish:
+	node tools/release.mjs publish
