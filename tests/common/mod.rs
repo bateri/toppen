@@ -4,7 +4,7 @@
 //!
 //! The program is the one Cargo built for the tests, looking at the fixture machine
 //! (`TOPPEN_FIXTURE=small`), never at the one the tests run on. The stand-in is the one `FAKE_HOST`
-//! names, or the one `make fake-host` builds in `.cache/pencere`.
+//! names, or the one `make fake-host` builds in the shared checkout of pencere (`built_host`).
 //! Nothing is skipped: a stand-in that is not there, or one too old to show a whole result, fails
 //! the run and says which, since a gate that passes because it did not look proves nothing.
 
@@ -33,8 +33,7 @@ pub fn host() -> &'static Path {
             Some(path) if !path.is_empty() => {
                 std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path))
             }
-            _ => Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(".cache/pencere/target/debug/pencere-fake-host"),
+            _ => built_host(),
         };
         assert!(
             host.is_file(),
@@ -62,6 +61,46 @@ pub fn host() -> &'static Path {
         );
         host
     })
+}
+
+/// Where `make fake-host` builds the stand-in: the checkout of pencere that `Cargo.lock` takes, which
+/// the pens share in `$XDG_CACHE_HOME/pencere-build/<ref>` (`~/.cache` without it), `<ref>` being
+/// the commit of a git source or `crates-v<version>` of the registry's, as the Makefile names it.
+fn built_host() -> PathBuf {
+    let lock = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.lock"))
+        .unwrap_or_default();
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .unwrap_or_default();
+    cache
+        .join("pencere-build")
+        .join(pencere_ref(&lock).unwrap_or_default())
+        .join("target/debug/pencere-fake-host")
+}
+
+/// The ref of pencere in `lock` (the text of `Cargo.lock`), or `None` where it takes none.
+fn pencere_ref(lock: &str) -> Option<String> {
+    let mut lines = lock.lines();
+    while let Some(line) = lines.next() {
+        if line == "name = \"pencere\"" {
+            let version = lines
+                .next()?
+                .strip_prefix("version = \"")?
+                .trim_end_matches('"');
+            let source = lines
+                .next()?
+                .strip_prefix("source = \"")?
+                .trim_end_matches('"');
+            return Some(if source.starts_with("registry") {
+                format!("crates-v{version}")
+            } else {
+                source.rsplit('#').next()?.to_owned()
+            });
+        }
+    }
+    None
 }
 
 /// The program the pane runs.
