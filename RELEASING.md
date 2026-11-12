@@ -36,8 +36,8 @@ Each of the three files is the Rust program with its page (`src/view/`) and pict
   whoever has the file can release as toppen, so it is never committed and never on a machine
   that builds in a workflow, and it has a copy somewhere safe. A release signed with another key
   is a release bateri asks its people about.
-- A `pencere` command that has `dist`, the one `Cargo.lock` takes: `make pencere` builds it
-  (`PENCERE` names another).
+- A `pencere` command that has `dist`, the one `Cargo.lock` takes: `make pencere` builds it, in the
+  folder the pens share for that commit (`make pencere-dir` says where; `PENCERE` names another).
 
 A static Linux file cannot open NVIDIA's library at run time, so the NVIDIA cards are read only by a
 build made on the machine; the README says so.

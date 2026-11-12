@@ -174,7 +174,7 @@ machine.
 ## Work on it
 
 ```
-make fake-host   # once: the stand-in terminal the tests run toppen in (fetches pencere)
+make fake-host   # once: the stand-in terminal the tests run toppen in (fetches pencere into ~/.cache/pencere-build, which the other pens share)
 make check       # format, lints, the program's tests, the page's tests, the installer's tests
 make build       # target/release/toppen
 make dev         # run it from its files in a pane that hosts pencere
