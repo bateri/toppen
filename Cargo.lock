@@ -947,7 +947,6 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "pencere"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "libc",
  "pencere-wire",
@@ -958,7 +957,6 @@ dependencies = [
 [[package]]
 name = "pencere-drive"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "fontdue",
  "pencere",
@@ -973,7 +971,6 @@ dependencies = [
 [[package]]
 name = "pencere-editor"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "pencere-view",
  "regex",
@@ -984,7 +981,6 @@ dependencies = [
 [[package]]
 name = "pencere-sandbox"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "hayro",
  "pencere-view",
@@ -998,9 +994,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pencere-tui"
+version = "0.4.1"
+dependencies = [
+ "pencere",
+ "pencere-drive",
+ "pencere-sandbox",
+ "pencere-view",
+ "unicode-width",
+]
+
+[[package]]
 name = "pencere-view"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "taffy",
 ]
@@ -1008,7 +1014,6 @@ dependencies = [
 [[package]]
 name = "pencere-wire"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=02b59c336724a6010b042518d49400a077381708#02b59c336724a6010b042518d49400a077381708"
 dependencies = [
  "serde",
  "serde_json",
@@ -1624,6 +1629,7 @@ dependencies = [
  "pencere",
  "pencere-drive",
  "pencere-sandbox",
+ "pencere-tui",
  "pencere-view",
  "regex",
  "serde",
@@ -1658,6 +1664,12 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "unicode-xid"

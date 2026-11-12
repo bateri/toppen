@@ -15,8 +15,11 @@ arm64 and x86_64:
 curl -fsSL https://raw.githubusercontent.com/bateri/toppen/main/install.sh | sh
 ```
 
-To see the view you need a terminal that hosts pencere views: [bateri](https://github.com/bateri/bateri), from its 0.23. Any
-other terminal is given a summary of the machine, as `top -l 1` prints one.
+A terminal that hosts pencere views ([bateri](https://github.com/bateri/bateri), from its 0.23) shows the
+view in its pane. Any other terminal is drawn on: toppen shows the same page with the characters of the
+terminal (256 colours at least; pictures in Kitty's graphics where the terminal takes them, as half blocks where it does not; some keys, ⌃⇧ chords for one, do not
+arrive without the Kitty keyboard protocol, and the page has an F-key for them). `PENCERE_TUI=1` asks for
+that in any terminal, `PENCERE_TUI=0` for a summary of the machine, as `top -l 1` prints one, instead.
 
 The installer takes the newest release (or `TOPPEN_VERSION=0.1.0`), checks it against the release's
 `SHA256SUMS`, and puts it in `~/.local/bin` (`TOPPEN_INSTALL=<dir>` puts it elsewhere). A file a
@@ -115,8 +118,8 @@ The program looks at the machine only while its view is open and the updates are
 ### Keys and the mouse
 
 - Everything the keys do can be pressed with the mouse, and everything the mouse does has a key (or a
-  row in the palette): **Cmd+K** (or **Ctrl+K**) opens the palette, which finds any command that can
-  be done now, with its keys, and turns a name you type into a filter of the table (`:3000` into the
+  row in the palette): **Cmd+K** (**Ctrl+K** in a terminal that hosts nothing, where toppen draws the page itself) opens the palette,
+  which finds any command that can be done now, with its keys, and turns a name you type into a filter of the table (`:3000` into the
   process on that port). **?** (or **F1**, or "Keys" in the status line) lists every command with the
   keys it has now.
 - htop's keys are there as second keys: **F1** the keys, **F2** the settings, **F4** the filter,
@@ -124,7 +127,7 @@ The program looks at the machine only while its view is open and the updates are
 
 ### Settings
 
-**F2** (or **Cmd+,**) opens the settings, kept in `~/.config/toppen/settings.json`
+**F2** (or **Cmd+,**, **Ctrl+,** where the terminal sends it) opens the settings, kept in `~/.config/toppen/settings.json`
 (`$XDG_CONFIG_HOME/toppen/`, or `$TOPPEN_CONFIG_DIR`). The window changes them; the file can be
 edited by hand:
 
@@ -163,7 +166,9 @@ calls and topics of `docs/calls.md`. A signal names its process by id and start 
 reads the start again right before it sends: a process that ended and whose id was used again is not
 signalled.
 
-In a terminal that does not host pencere views, the same program prints the summary of the machine.
+In a terminal that does not host pencere views, the same program draws the page itself with the
+characters of the terminal (`pencere-tui`, in the file), on a keyboard where Ctrl is what Cmd is on a
+Mac; with `PENCERE_TUI=0`, or with its output piped, it prints the summary of the machine.
 
 ## Work on it
 
@@ -173,6 +178,11 @@ make check       # format, lints, the program's tests, the page's tests, the ins
 make build       # target/release/toppen
 make dev         # run it from its files in a pane that hosts pencere
 ```
+
+The file has two builds. The default draws the page itself in a terminal that hosts nothing (the
+`terminal` feature, which takes `pencere-tui` with it); `cargo build --no-default-features` makes the
+smaller one that does not, which prints the summary there. The file that is shipped is built with
+`cargo build --profile dist` (LTO, one code generation unit, stripped).
 
 `make check` needs Rust 1.99 or later and Node 22 (for the installer's tests and the release tools).
 It is the gate GitHub runs on every push and pull request, on Linux and macOS; how a release is made

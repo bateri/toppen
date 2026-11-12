@@ -110,7 +110,7 @@ function filter.view()
 		escape = true,
 		tone = view.error and "bad" or nil,
 	})
-	local bar = b.div():row():items_center():gap(8):px(PAD):h(BAR):no_shrink()
+	local bar = b.div():row():items_center():gap(8):px(PAD):h(kit.tight() and 18 or BAR):no_shrink()
 	if act.switch ~= nil and S.width >= 560 then
 		bar:child(act.switch())
 	end

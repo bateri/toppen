@@ -70,9 +70,9 @@ local TABLE = {
 	{ id = "copy_cwd", title = "Copy the working folder", group = "Process", when = "process" },
 	-- The signals are here, after the others of the process.
 
-	{ id = "palette", title = "Find a command or a process", group = "Toppen", keys = { "cmd+k", "ctrl+k" } },
+	{ id = "palette", title = "Find a command or a process", group = "Toppen", keys = { "mod+k", "ctrl+k" } },
 	{ id = "help", title = "Show the keys", group = "Toppen", keys = { "?", "f1" } },
-	{ id = "settings", title = "Open the settings", group = "Toppen", keys = { "cmd+,", "f2" } },
+	{ id = "settings", title = "Open the settings", group = "Toppen", keys = { "mod+,", "f2" } },
 }
 for _, signal in commands.SIGNALS do
 	TABLE[#TABLE + 1] = { id = signal.id, title = signal.title, group = "Process", when = "process" }

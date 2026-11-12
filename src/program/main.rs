@@ -1,6 +1,8 @@
 //! toppen: a system monitor in the terminal pane, what `top` and `btop` do. In a terminal that shows
-//! pencere views the monitor opens in the pane; in one that does not, the program prints a summary
-//! of the machine and ends, as `top -l 1` does.
+//! pencere views the monitor opens in the pane; in one that does not, the program draws the same page
+//! with the characters of the terminal (`pencere-tui`, the `terminal` feature, on by default); where it
+//! cannot (`PENCERE_TUI=0`, a terminal it cannot take, a build without the feature), it prints a
+//! summary of the machine and ends, as `top -l 1` does.
 //!
 //! The program looks at the machine and keeps what it saw; the page (`src/view/`, in pencere's kit)
 //! is the monitor, drawn by the terminal, and asks the program for what it needs with the calls and
@@ -32,7 +34,11 @@ mod text;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 
+#[cfg(not(feature = "terminal"))]
+use pencere::serve;
 use pencere::{EndedBy, NoViewReason, Options, Outcome, ViewControl};
+#[cfg(feature = "terminal")]
+use pencere_tui::serve;
 
 use command_line::Asked;
 use sample::Source;
@@ -44,8 +50,12 @@ use session::Session;
 use state::settings::{Settings, Store, config_dir};
 use text::summary::Summary;
 
-/// The words under the summary of a terminal that shows no views.
-const NO_VIEWS: &str = "This terminal shows no views. toppen opens as a monitor in a terminal that hosts\npencere (bateri); run it there, or over ssh from one.";
+/// The words under the summary of a terminal that was given no monitor.
+#[cfg(feature = "terminal")]
+const NO_VIEWS: &str = "toppen shows its monitor in a terminal that hosts pencere (bateri), and draws it itself in\nany other (set PENCERE_TUI=1 to ask for that); here it was not shown, so this is the summary.";
+/// The words under the summary of a build that has no screen of its own.
+#[cfg(not(feature = "terminal"))]
+const NO_VIEWS: &str = "toppen shows its monitor in a terminal that hosts pencere (bateri); this build does not draw it\nin any other, so this is the summary. The build that does is the one `install.sh` fetches.";
 
 /// What looks at the machine, what acts on its processes, and what lists its listening sockets.
 type Parts = (Box<dyn Source>, Arc<dyn Control>, Arc<Ports>);
@@ -97,7 +107,7 @@ fn settings() -> Settings {
 }
 
 /// What `serve` is given: the app, its name and icons, the calls and the topics of `api/`, and the
-/// summary for a terminal that shows no views, whose status goes to `fallen_back`.
+/// summary for a terminal that is given no monitor, whose status goes to `fallen_back`.
 fn options(session: &Arc<Session>, fallen_back: &Arc<Mutex<Option<u8>>>) -> Options {
     let mut options = Options::new()
         .app(pencere::app!())
@@ -182,7 +192,7 @@ fn main() -> ExitCode {
         .with_settings(store),
     );
     let fallen_back = Arc::new(Mutex::new(None));
-    let outcome = pencere::serve(options(&session, &fallen_back).control(view));
+    let outcome = serve(options(&session, &fallen_back).control(view));
     let status = match outcome {
         // The terminal took the monitor down: what it said is the one trace of why, so it is
         // left under the prompt rather than lost with the view.

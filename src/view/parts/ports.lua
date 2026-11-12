@@ -279,7 +279,7 @@ local function count_words()
 end
 
 local function bar()
-	local row = b.div():row():items_center():gap(8):px(PAD):h(BAR):no_shrink()
+	local row = b.div():row():items_center():gap(8):px(PAD):h(kit.tight() and 18 or BAR):no_shrink()
 	if S.width >= 560 then
 		row:child(ports.switch())
 	end
@@ -334,8 +334,8 @@ function ports.view()
 		numbers = false,
 		-- A socket is acted on through its process, not a value in it: the table chooses rows.
 		select = "row",
-		row_height = ROW,
-		head_height = ROW + 2,
+		row_height = kit.in_cells() and 18 or ROW,
+		head_height = kit.in_cells() and 18 or ROW + 2,
 	})))
 	if blind then
 		box:child(b.div():px(PAD):py(4):no_shrink():child(

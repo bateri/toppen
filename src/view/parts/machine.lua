@@ -278,7 +278,7 @@ local function cpu_view(inner)
 			end
 			local cell = b.div():col():gap(4):w(cell_w):no_shrink():p(6):rounded(6):bg("raised1"):clip()
 			cell:child(head)
-			cell:child(graph.area({ { values = S.cores[index] or {}, role = format.load_role(share) } }, count(), 100, cell_w - 12, 26))
+			cell:child(graph.area({ { values = S.cores[index] or {}, role = format.load_role(share) } }, count(), 100, cell_w - 12, kit.in_cells() and 36 or 26))
 			grid:child(cell)
 		end
 		box:child(grid)

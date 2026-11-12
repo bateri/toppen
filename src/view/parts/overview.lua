@@ -145,7 +145,19 @@ local CARD_W = 190
 function overview.view()
 	local count = cards.count()
 	if S.width >= CARD_W * count then
-		local w = math.floor((S.width - 2 * PAGE_PAD - (count - 1) * GAP) / count)
+		local pad, gap = PAGE_PAD, GAP
+		local w = math.floor((S.width - 2 * pad - (count - 1) * gap) / count)
+		if kit.in_cells() then
+			-- On the cells of a terminal the room is shared in whole columns (8 points), a column more to
+			-- the first cards where it does not divide: none is left over at the end of the row.
+			pad, gap = 16, 8
+			local room = math.floor((S.width - 2 * pad - (count - 1) * gap) / 8)
+			local base, extra = math.floor(room / count), room % count
+			w = {}
+			for index = 1, count do
+				w[index] = (base + (index <= extra and 1 or 0)) * 8
+			end
+		end
 		local h = CARD_H
 		if S.height >= ROOMY_PAGE then
 			h = ROOMY_CARD_H
@@ -155,7 +167,7 @@ function overview.view()
 			h = MIDDLE_CARD_H
 		end
 		local list = cards.list(w, h)
-		local row = b.div():row():gap(GAP):px(PAGE_PAD):pt(PAGE_PAD):no_shrink()
+		local row = b.div():row():gap(gap):px(pad):pt(pad):no_shrink()
 		for _, one in list do
 			row:child(one)
 		end

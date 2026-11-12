@@ -174,3 +174,8 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "ports.png");
     Ok(())
 }
+
+#[path = "page_terminal.rs"]
+mod terminal;
+#[path = "page_tui.rs"]
+mod tui;

@@ -95,10 +95,63 @@ end
 
 -- --- Words and pieces ------------------------------------------------------------------------------
 
--- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme.
+-- Whether the page is drawn in the character cells of a terminal: what is a few points off a whole row
+-- is a row more or none there.
+local cells = nil
+local function in_cells()
+	if cells == nil then
+		cells = pencere.draws().cells == true
+	end
+	return cells
+end
+
+-- Whether the page is on the cells of a terminal that has few rows (fewer than 33): there the rows that
+-- only keep things apart (above the panel, round the bar of the table) are rows the table does without.
+-- A taller terminal has the rows to spare.
+local function tight()
+	return in_cells() and S.height < 600
+end
+
+-- Whether a picture of the page is drawn in too few pixels to read a small one by (a terminal with no
+-- graphics protocol, which draws it in half blocks): there an icon is a character, which is drawn
+-- exactly. Asked the first time it is needed, not when the file is read.
+local coarse = nil
+local function coarse_pictures()
+	if coarse == nil then
+		coarse = pencere.draws().coarse_images == true
+	end
+	return coarse
+end
+
+-- The characters that say what the icons of src/assets/icons do, where a picture is coarse. Each is in
+-- the fonts a terminal has by default (Menlo and SF Mono) but the magnifier, which Menlo has and SF Mono
+-- falls back from.
+local CHARACTERS = {
+	search = "⌕",
+	["chevron-right"] = "▸",
+	["chevron-down"] = "▾",
+	["loader-2"] = "…",
+	eye = "○",
+	["eye-off"] = "●",
+}
+
+-- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme; or
+-- where a picture is coarse, the character that says it, in that colour.
 local function icon(name, size, color)
+	if coarse_pictures() then
+		return b.text(CHARACTERS[name] or "•"):color(color or "dim"):no_shrink()
+	end
 	size = size or 15
 	return b.image("assets/icons/" .. name .. ".svg"):size(size, size):tint(color or "dim"):no_shrink()
+end
+
+-- The icon a button of the library takes for `name`: the path of its picture, which the button tints
+-- in the colour it draws in; or where a picture is coarse, the element of the character that says it.
+local function icon_for(name)
+	if coarse_pictures() then
+		return icon(name)
+	end
+	return "assets/icons/" .. name .. ".svg"
 end
 
 -- The keys of a command as the host's keyboard writes them (`@pencere/keys`: "cmd+shift+k" is "⇧⌘K"
@@ -128,9 +181,32 @@ local function host_shown(host)
 	return S.private and "this machine" or host
 end
 
--- A picture turning round, for what is being waited for: the host turns it, a frame at a time.
+-- A picture turning round, for what is being waited for: the host turns it, a frame at a time. Where the
+-- page is drawn in cells there is no turning of a picture (it would stand still and look stuck): the busy
+-- mark is a character that is another every tenth of a second, which a timer asks the page to draw for
+-- as long as it is drawn.
+local TURNING = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local turn = { step = 0, seen = 0, timer = nil }
 local function spinner(size, color)
-	return icon("loader-2", size, color):motion({ spin = 1 })
+	if in_cells() then
+		turn.seen = S.now
+		if turn.timer == nil or not turn.timer:active() then
+			turn.timer = pencere.time.every(0.1, function()
+				turn.step += 1
+				if S.now - turn.seen > 0.5 then
+					turn.timer:cancel()
+					return nil
+				end
+				return true
+			end)
+		end
+		return b.text(TURNING[turn.step % #TURNING + 1]):color(color or "dim"):no_shrink()
+	end
+	local turning = icon("loader-2", size, color)
+	if coarse_pictures() then
+		return turning
+	end
+	return turning:motion({ spin = 1 })
 end
 
 -- The actions of the page, by name, filled by the parts that do them: a part calls another's action
@@ -148,6 +224,9 @@ return {
 	take = take,
 	call = call,
 	icon = icon,
+	icon_for = icon_for,
+	in_cells = in_cells,
+	tight = tight,
 	keys_of = keys_of,
 	user_shown = user_shown,
 	host_shown = host_shown,

@@ -95,7 +95,12 @@ local function render(size, now, reduce_motion)
 		panel:child(filter.view())
 		panel:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(S.inner)))))
 	end
-	root:child(b.div():grow(1):min_h(0):col():px(SIZE.pad):pt(SIZE.gap):pb(SIZE.pad):child(panel))
+	-- On a terminal of few rows the panel has no room round it but a row above and the sides.
+	local above, below = SIZE.gap, SIZE.pad
+	if kit.tight() then
+		below = 0
+	end
+	root:child(b.div():grow(1):min_h(0):col():px(SIZE.pad):pt(above):pb(below):child(panel))
 	root:child(status.view())
 	actions.view(root)
 	help.view(root)
@@ -232,6 +237,35 @@ local function key(event)
 	return nil
 end
 
+-- The pointer is a hand over what answers a press (a button, a tab, a row, a head, a card) and the arrow elsewhere.
+-- A shape the library asks for stays its own: the edge of a column sizes it, and a scrim is no button. (A field the host
+-- draws answers no press, so it is not asked about.)
+local NOT_A_BUTTON = { edge = true, handle = true, scrim = true }
+local pointing = false
+
+local function hand(reply, at)
+	local shape = type(reply) == "table" and reply.cursor or nil
+	-- The library has a shape of its own to keep (an edge, held or not) or the pointer is held: it is not the page's.
+	if (shape ~= nil and shape ~= "arrow") or u.cursor ~= nil or u.capture ~= nil then
+		pointing = false
+		return reply
+	end
+	local over = false
+	local name = at ~= nil and pencere.layout.hit(at) or nil
+	if name ~= nil then
+		local part = u:part_of(name)
+		over = not (part ~= nil and NOT_A_BUTTON[part.part])
+	end
+	if over and (not pointing or shape == "arrow") then
+		pointing = true
+		return b.merge(reply, { cursor = "pointer" })
+	elseif not over and pointing then
+		pointing = false
+		return b.merge(reply, { cursor = "arrow" })
+	end
+	return reply
+end
+
 local function handle(event)
 	-- A command waits for its key in the settings: the next key is its, whatever the key is.
 	if event.type == "key" and settings.capturing() then
@@ -243,11 +277,13 @@ local function handle(event)
 	end
 	local kind = event.type
 	if kind == "move" then
+		reply = hand(reply, { x = event.x, y = event.y })
 		tab.pointer(tab.contains({ x = event.x, y = event.y }))
 		if machine.pointer(event.x, event.y) then
 			reply = b.merge(reply, true)
 		end
 	elseif kind == "leave" then
+		reply = hand(reply, nil)
 		tab.pointer(false)
 		if machine.leave() then
 			reply = b.merge(reply, true)

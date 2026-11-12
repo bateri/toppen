@@ -299,10 +299,12 @@ fn closing_the_view_ends_toppen_with_success() {
 }
 
 #[test]
-fn a_terminal_without_pencere_is_given_the_summary_and_the_words_that_say_why() {
+fn a_terminal_that_is_not_drawn_on_is_given_the_summary_and_the_words_that_say_why() {
     let pane = Pane::new();
     let mut command = pane.command(host());
+    // Without this a terminal that hosts no views is drawn on, which is the live tests' to see.
     command
+        .env("PENCERE_TUI", "0")
         .args(["--no-host", "--passthrough", "--limit", "15", "--"])
         .arg(program());
     let ran = run(command, None, Duration::from_secs(30));
@@ -311,7 +313,7 @@ fn a_terminal_without_pencere_is_given_the_summary_and_the_words_that_say_why() 
     }
     assert!(ran.stdout.contains("toppen on lantern"), "{}", ran.stdout);
     assert!(
-        ran.stdout.contains("This terminal shows no views"),
+        ran.stdout.contains("so this is the summary"),
         "{}",
         ran.stdout
     );
@@ -328,7 +330,11 @@ fn a_pipe_is_given_the_summary_alone() {
     let ran = run(pane.command(program()), None, Duration::from_secs(20));
     assert_eq!(ran.status, Some(0), "{}", ran.stderr);
     assert!(ran.stdout.contains("CPU "), "{}", ran.stdout);
-    assert!(!ran.stdout.contains("shows no views"), "{}", ran.stdout);
+    assert!(
+        !ran.stdout.contains("so this is the summary"),
+        "{}",
+        ran.stdout
+    );
 }
 
 #[test]

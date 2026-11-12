@@ -68,6 +68,8 @@ local T = {
 	window = nil,
 	-- Whether the keyboard was put in the table yet.
 	focused = false,
+	-- The row the cursor went to before the program had told its words: chosen when it has.
+	want = nil,
 }
 tab.state = T
 
@@ -77,6 +79,9 @@ local G = { cursor = nil, widths = {}, sort = nil }
 local function row_at(place)
 	return T.rows[place - T.first]
 end
+
+-- Chooses a row (defined with the actions of the table).
+local select_row
 
 -- A row as the program names it in `view`.
 local function ref(row)
@@ -97,6 +102,10 @@ end
 
 -- Tells the program how the table is to be, and takes what it says it is.
 local function set(params)
+	if params.selected == nil and params.hold == nil and params.window == nil then
+		-- What shows which rows, or in what order, has changed: the row the cursor went to is no more.
+		T.want = nil
+	end
 	kit.call("view", params, function(result, err)
 		if result then
 			T.view = result
@@ -204,14 +213,32 @@ function tab.told(told)
 	T.moved, T.held, T.first, T.rows = told.moved, told.held, told.first, told.rows
 	T.view = told.view
 	G.sort = { column = told.view.sort, descending = told.view.descending }
-	if T.selected ~= nil then
+	-- A row the cursor went to before its words came (keys sent faster than rows are fetched) is
+	-- chosen when they do; until then the cursor is where the person put it, not where the program
+	-- last knew the choice.
+	if T.want ~= nil and T.want > told.visible then
+		T.want = nil
+	end
+	if T.want ~= nil then
+		local row = row_at(T.want)
+		if row ~= nil then
+			T.want = nil
+			select_row(row)
+		end
+	end
+	if T.selected ~= nil and T.want == nil then
+		local chosen = told.selectedIndex ~= nil and row_at(told.selectedIndex + 1) or nil
 		if told.selectedIndex ~= nil then
 			-- The cursor follows its process wherever the order takes it. The same table is changed, not
-			-- a new one made: the grid scrolls to a cursor it has not seen.
-			if G.cursor == nil then
-				G.cursor = { row = told.selectedIndex + 1, column = 1 }
-			else
-				G.cursor.row = told.selectedIndex + 1
+			-- a new one made: the grid scrolls to a cursor it has not seen. A word on another process
+			-- than the one chosen is of an earlier choice (it was said before the program heard the
+			-- last), not of where the cursor is.
+			if chosen == nil or same(T.selected, ref(chosen)) then
+				if G.cursor == nil then
+					G.cursor = { row = told.selectedIndex + 1, column = 1 }
+				else
+					G.cursor.row = told.selectedIndex + 1
+				end
 			end
 		elseif G.cursor ~= nil then
 			-- It ended, or a fold hides it: the cursor stays where it was, on whatever is there.
@@ -528,7 +555,8 @@ local function toggle_fold(row)
 	set({ toggle = ref(row) })
 end
 
-local function select_row(row)
+function select_row(row)
+	T.want = nil
 	T.selected = ref(row)
 	set({ selected = T.selected })
 	keyed()
@@ -722,6 +750,8 @@ function tab.action(action)
 		if kind == "select" then
 			local row = row_at(action.row)
 			if row == nil then
+				-- Its words are not here yet: asked for with the window, chosen when they come.
+				T.want = action.row
 				return true
 			end
 			select_row(row)
@@ -805,8 +835,12 @@ function tab.view(width)
 		numbers = false,
 		-- A process is acted on, not a value in it: the table chooses rows.
 		select = "row",
-		row_height = ROW,
-		head_height = ROW + 4,
+		-- On the cells of a terminal a row is 18 points, the same as its row of cells: the spacers above
+		-- and below the rows the table makes stand for as many rows as they are points of (26 would be
+		-- 1.4 rows of a spacer for each row made, and the rows would move as the window moves).
+		row_height = kit.in_cells() and 18 or ROW,
+		-- The head is one row of cells (a taller one is a row of nothing under its names).
+		head_height = kit.in_cells() and 18 or ROW + 4,
 	})
 end
 

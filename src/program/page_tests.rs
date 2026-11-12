@@ -417,6 +417,90 @@ fn the_order_is_held_under_the_pointer_and_released_by_the_badge() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn a_column_edge_held_is_not_taken_for_a_button_when_the_pointer_drifts() {
+    use pencere_view::{Button, Cursor, Input, Mods, Point};
+    let (_session, mut page) = open_small(WIDE);
+    let centre = |page: &Page, name: &str| {
+        let rect = page.bounds(name).expect("the element is laid out");
+        Point::new(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
+    };
+    let edge = centre(&page, "procs/edge/pid");
+    page.move_to(edge).expect("the pointer is on the edge");
+    assert_eq!(page.cursor(), Some(Cursor::ResizeHorizontal));
+    page.pointer(Input::Press {
+        at: edge,
+        button: Button::Left,
+        mods: Mods::default(),
+        count: 1,
+    })
+    .expect("the edge is held");
+    // Held, over a row or a head the page does not say the hand: the library holds the pointer then.
+    for name in ["procs/row/3", "procs/head/cpu"] {
+        let at = centre(&page, name);
+        page.move_to(at).expect("the pointer drifts");
+        assert_ne!(page.cursor(), Some(Cursor::Pointer), "held, over {name}");
+    }
+    page.pointer(Input::Release {
+        at: edge,
+        button: Button::Left,
+    })
+    .expect("the edge is let go");
+    // And let go, a row is a hand again.
+    page.hover("procs/row/3")
+        .expect("the pointer is over a row");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_pointer_is_a_hand_over_what_answers_a_press_and_the_arrow_elsewhere() {
+    use pencere_view::{Cursor, Point};
+    let (_session, mut page) = open_small(WIDE);
+    // A row, a head and the status line's items answer a press: the hand.
+    for name in ["procs/row/3", "procs/head/pid", "status/item/pause"] {
+        page.leave().expect("the pointer is off the page");
+        page.hover(name).expect("the pointer is over it");
+        assert_eq!(page.cursor(), Some(Cursor::Pointer), "{name}");
+    }
+    // The edge that sizes a column keeps the library's own shape, and the hand comes back after it.
+    page.hover("procs/edge/pid")
+        .expect("the pointer is on an edge");
+    assert_eq!(page.cursor(), Some(Cursor::ResizeHorizontal));
+    page.hover("procs/row/3")
+        .expect("the pointer is over a row");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer));
+    // Off what answers a press, and off the page, it is the arrow again.
+    page.move_to(Point { x: 1.0, y: 1.0 })
+        .expect("the pointer is in a corner");
+    assert_eq!(page.cursor(), Some(Cursor::Arrow));
+    page.hover("procs/row/3")
+        .expect("the pointer is over a row");
+    page.leave().expect("the pointer leaves");
+    assert_eq!(page.cursor(), Some(Cursor::Arrow));
+    // A field is the host's: the page does not call it a button (the host draws its I-beam).
+    page.hover("filter/field")
+        .expect("the pointer is on the filter");
+    assert_ne!(page.cursor(), Some(Cursor::Pointer), "the filter, idle");
+    page.press("/").expect("the filter takes the keyboard");
+    page.hover("filter/field")
+        .expect("the pointer is on the filter");
+    assert_ne!(page.cursor(), Some(Cursor::Pointer), "the filter, in focus");
+    // The palette's own is a field too.
+    page.press("escape").expect("the filter is left");
+    page.press("cmd+k").expect("the palette is asked for");
+    page.wait_for(WITHIN, |page| page.says("Find a command"))
+        .expect("the palette is open");
+    let name = (1..=9)
+        .map(|serial| format!("palette{serial}/input/field"))
+        .find(|name| page.bounds(name).is_some())
+        .expect("the palette has a field");
+    page.hover(&name)
+        .expect("the pointer is on the palette's field");
+    assert_ne!(page.cursor(), Some(Cursor::Pointer), "{name}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn a_header_menu_shows_and_hides_columns() {
     let (_session, mut page) = open_small(WIDE);
     assert!(!page.says("Virtual"));
@@ -1200,5 +1284,155 @@ fn a_big_machine_in_a_big_pane_stays_within_the_pages_memory() {
     }
     page.advance(0.3).expect("the table keeps drawing");
     assert!(page.says("Name"), "{}", short(&page));
+    drop(session);
+}
+
+/// The page laid out on the cells of a terminal, a column 8 points and a row 18, as `pencere-tui`
+/// lays it out there.
+fn open_on_cells(session: &Arc<Session>, (cols, rows): (u16, u16)) -> Result<Page, Error> {
+    let program = InProcess::new(options(session, &Arc::new(Mutex::new(None))));
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    let mut page = Headless::app(env!("CARGO_MANIFEST_DIR"))
+        .size(f32::from(cols) * COLUMN, f32::from(rows) * ROW)
+        .measure(pencere_tui::Cells::new(COLUMN, ROW))
+        .draws(vec![pencere_view::Drawing::Cells])
+        .wall_clock(now, 0)
+        .limits(limits(None))
+        .peer(program)
+        .open()?;
+    page.wait_for(WITHIN, |page| page.says("load "))?;
+    page.advance(0.5)?;
+    Ok(page)
+}
+
+/// The points of a column and of a row of the cells the page is laid out on.
+const COLUMN: f32 = 8.0;
+const ROW: f32 = 18.0;
+
+/// On the cells of a terminal a card's graph stands between the edges of what is written in the
+/// card: as far from the card's left as from its right, at every width of the window. (The card's
+/// padding and the graph's width were each rounded to columns on their own, and at some widths
+/// the graph came a column past the words above it.)
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_cards_graph_is_as_far_from_the_cards_left_as_from_its_right_on_cells() {
+    let session = session_over(Fixture::small(), TICK);
+    let mut page = open_on_cells(&session, (160, 48)).expect("the page opens");
+    let mut off = Vec::new();
+    let mut seen = 0;
+    for cols in 100..=200_u16 {
+        page.resize(f32::from(cols) * COLUMN, 48.0 * ROW)
+            .expect("the window is another width");
+        page.advance(0.2).expect("the page keeps drawing");
+        for key in ["cpu", "memory", "network", "disk", "gpu"] {
+            let card = page
+                .bounds(&format!("card/{key}"))
+                .unwrap_or_else(|| panic!("the card of {key} at {cols} columns"));
+            // A card too short for a graph has none.
+            let Some(graph) = page.bounds(&format!("card/{key}/graph")) else {
+                continue;
+            };
+            seen += 1;
+            let left = ((graph.x - card.x) / COLUMN).round();
+            let right = ((card.x + card.w - graph.x - graph.w) / COLUMN).round();
+            if left != right {
+                off.push(format!("{cols} columns, {key}: {left} left, {right} right"));
+            }
+        }
+    }
+    assert!(seen >= 300, "only {seen} graphs were looked at");
+    assert!(off.is_empty(), "{} of {seen}: {off:#?}", off.len());
+    drop(session);
+}
+
+/// What stands past the box it is in, in the cells it does so by, said once for each.
+fn spilled(page: &Page) -> Vec<String> {
+    let mut said: Vec<String> = page
+        .spills()
+        .iter()
+        .map(|spill| {
+            let [left, top, right, bottom] = spill.past;
+            format!(
+                "{:?} in {:?}: {} left, {} above, {} right, {} below (columns, rows)",
+                spill.words,
+                spill.around,
+                left / COLUMN,
+                top / ROW,
+                right / COLUMN,
+                bottom / ROW
+            )
+        })
+        .collect();
+    said.sort();
+    said.dedup();
+    said
+}
+
+/// The screens of the page a person can open: the key that opens each, words it then says, and the
+/// key that puts it away again.
+const SCREENS: [(&str, &str, &str, &str); 11] = [
+    ("the overview", "", "Name", ""),
+    ("the processor's card", "1", "Processor use", "escape"),
+    ("the memory's card", "2", "Memory", "escape"),
+    ("the network's card", "3", "Network", "escape"),
+    ("the disk's card", "4", "Disk", "escape"),
+    ("the graphics card's card", "5", "GPU", "escape"),
+    ("the ports", "p", "listening sockets", "p"),
+    ("the tree", "t", "Name", "t"),
+    ("the palette", "cmd+k", "Find a command", "escape"),
+    ("the help", "?", "Keys and commands", "escape"),
+    ("the settings", "f2", "Settings", "escape"),
+];
+
+/// On the cells of a terminal nothing on any screen of the page stands past the box it is in, at
+/// any size of the window: a part a column wider than the room its box has for it, or a row taller,
+/// is cut off at the box's edge or stands on the box's padding (a card's graph a column past its
+/// words, the gauges of a narrow page a column past the page, the help a row under the window).
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn nothing_stands_past_its_box_on_any_screen_at_any_size_of_a_terminal() {
+    let session = session_over(Fixture::small(), TICK);
+    let mut page = open_on_cells(&session, (160, 48)).expect("the page opens");
+    let mut found = std::collections::BTreeMap::<String, Vec<String>>::new();
+    let mut looked = 0;
+    for (name, open, says, close) in SCREENS {
+        if !open.is_empty() {
+            page.press(open).expect("the screen is asked for");
+        }
+        page.wait_for(WITHIN, |page| page.says(says))
+            .unwrap_or_else(|why| panic!("{name} is shown: {why:?}"));
+        // Three heights the page lays its cards out for, and seven widths one after another in each
+        // of the three widths it lays itself out for: a size that rounds wrong does so at some widths
+        // of every few and not at the others. And the overview, which every screen has the bars of,
+        // at every width from 80 to 200 columns: a line that fills does so over a stretch of widths.
+        let banded = [24_u16, 40, 56].into_iter().flat_map(|rows| {
+            (80..87_u16)
+                .chain(120..127)
+                .chain(156..163)
+                .map(move |cols| (cols, rows))
+        });
+        let every = (80..=200_u16)
+            .filter(|_| open.is_empty())
+            .map(|cols| (cols, 48_u16));
+        for (cols, rows) in banded.chain(every) {
+            page.resize(f32::from(cols) * COLUMN, f32::from(rows) * ROW)
+                .expect("the window is another size");
+            looked += 1;
+            for line in spilled(&page) {
+                found
+                    .entry(format!("{name}: {line}"))
+                    .or_default()
+                    .push(format!("{cols}x{rows}"));
+            }
+        }
+        if !close.is_empty() {
+            page.press(close).expect("the screen is put away");
+            page.advance(0.3).expect("the page keeps drawing");
+        }
+    }
+    assert!(looked >= 800, "only {looked} windows were looked at");
+    assert!(found.is_empty(), "{} kinds: {found:#?}", found.len());
     drop(session);
 }

@@ -86,7 +86,16 @@ local function figures(list, w)
 	local row = b.div():row():gap(8):h(FIGURES):w(w):no_shrink()
 	-- A narrow card says its figures smaller, so that "673 KiB/s" fits its column.
 	local column = (w - 8 * math.max(#list - 1, 0)) / math.max(#list, 1)
-	if column < 66 and #list > 2 then
+	-- What a column has to hold: on the cells of a terminal a character is a cell, 8 points, whatever its
+	-- size, and a figure is as wide as it has characters (a label cut short is a word that says nothing).
+	local needed = 66
+	if kit.in_cells() then
+		needed = 0
+		for _, figure in list do
+			needed = math.max(needed, 8 * math.max(utf8.len(figure[1]) or 0, utf8.len(figure[2]) or 0))
+		end
+	end
+	if column < needed and #list > 2 then
 		-- Too narrow for three: two whole figures say more than three cut ones.
 		list = { list[1], list[2] }
 		column = (w - 8) / 2
@@ -155,7 +164,7 @@ local function card(spec, w, h)
 		graph_h -= STRIP + GAP
 	end
 	if graph_h >= GRAPH_MIN then
-		box:child(spec.graph(inner_w, graph_h, role))
+		box:child(spec.graph(inner_w, graph_h, role):id(name .. "/graph"))
 	else
 		box:child(b.spacer())
 	end
@@ -444,15 +453,19 @@ function cards.count()
 end
 
 -- The cards at `w` by `h` points each, in the order of the overview.
+-- `w` is one width for all of them, or a list of one for each.
 function cards.list(w, h)
+	local function width(index)
+		return type(w) == "table" and w[index] or w
+	end
 	local list = {
-		card(cpu_card(), w, h),
-		card(memory_card(), w, h),
-		card(network_card(), w, h),
-		card(disk_card(), w, h),
+		card(cpu_card(), width(1), h),
+		card(memory_card(), width(2), h),
+		card(network_card(), width(3), h),
+		card(disk_card(), width(4), h),
 	}
 	if cards.count() == 5 then
-		list[#list + 1] = card(gpu_card(), w, h)
+		list[#list + 1] = card(gpu_card(), width(5), h)
 	end
 	return list
 end
