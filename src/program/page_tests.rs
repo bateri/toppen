@@ -443,6 +443,7 @@ fn a_column_edge_held_is_not_taken_for_a_button_when_the_pointer_drifts() {
     page.pointer(Input::Release {
         at: edge,
         button: Button::Left,
+        mods: Mods::default(),
     })
     .expect("the edge is let go");
     // And let go, a row is a hand again.
@@ -1345,6 +1346,208 @@ fn a_cards_graph_is_as_far_from_the_cards_left_as_from_its_right_on_cells() {
     assert!(seen >= 300, "only {seen} graphs were looked at");
     assert!(off.is_empty(), "{} of {seen}: {off:#?}", off.len());
     drop(session);
+}
+
+/// The page as the characters of its cells (`pencere-tui`'s grid), no pictures: what a person sees of
+/// it in a plain terminal.
+fn grid_of(page: &Page, (cols, rows): (u16, u16)) -> pencere_tui::Grid {
+    let options = pencere_tui::Options {
+        col: COLUMN,
+        row: ROW,
+        images: pencere_tui::ImageMode::Off,
+        canvases: pencere_tui::CanvasMode::Characters,
+        pixels: (12, 24),
+    };
+    pencere_tui::render(
+        page.list(),
+        cols,
+        rows,
+        &pencere_tui::Theme::dark(),
+        &pencere_tui::NoPictures,
+        &options,
+    )
+    .grid
+}
+
+/// On the cells of a terminal the bar of a gauge (the narrow overview's CPU, Memory, Disk and GPU)
+/// is a line through the middle of the row its name and its value are on: a bar that is a line at the
+/// top of its cell (`▔`) or at the bottom (`▁`) reads as the underline of the row above or below it,
+/// and the name of one gauge looks underlined by the bar of the next.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_gauges_bar_runs_through_the_middle_of_the_row_of_its_name_and_value_on_cells() {
+    let mut looked = 0;
+    let mut wrong = Vec::new();
+    for size in [(80_u16, 24_u16), (100, 36)] {
+        let session = session_over(Fixture::small(), TICK);
+        let page = open_on_cells(&session, size).expect("the page opens");
+        let grid = grid_of(&page, size);
+        for row in 0..grid.rows() {
+            let cells: Vec<_> = (0..grid.cols())
+                .filter_map(|col| grid.cell(col, row))
+                .collect();
+            let text: String = cells.iter().map(|cell| cell.ch).collect();
+            let Some(name) = ["CPU", "Memory", "Disk", "GPU"]
+                .into_iter()
+                .find(|name| text.trim_start().starts_with(name))
+            else {
+                continue;
+            };
+            let bar: String = cells
+                .iter()
+                .map(|cell| cell.ch)
+                .filter(|ch| "\u{2594}\u{2581}\u{2500}\u{2501}".contains(*ch))
+                .collect();
+            looked += 1;
+            if bar.chars().count() < 8 || bar.chars().any(|ch| ch != '\u{2500}' && ch != '\u{2501}')
+            {
+                wrong.push(format!(
+                    "{size:?}, the row of {name}: the bar is {:?} (the bar of a gauge is a line through the middle of its row)",
+                    bar.chars().take(6).collect::<String>()
+                ));
+            }
+        }
+    }
+    assert!(looked >= 6, "only {looked} gauges were looked at");
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// What each card of the overview says in its cells, a string for each row of the card: the
+/// characters of the grid inside the card's box.
+fn card_rows(page: &Page, grid: &pencere_tui::Grid, key: &str) -> Option<Vec<String>> {
+    let card = page.bounds(&format!("card/{key}"))?;
+    let (c0, c1) = (
+        (card.x / COLUMN).round() as u16,
+        ((card.x + card.w) / COLUMN).round() as u16,
+    );
+    let (r0, r1) = (
+        (card.y / ROW).round() as u16,
+        ((card.y + card.h) / ROW).round() as u16,
+    );
+    Some(
+        (r0..r1.min(grid.rows()))
+            .map(|row| {
+                (c0..c1.min(grid.cols()))
+                    .filter_map(|col| grid.cell(col, row))
+                    .filter(|cell| !cell.tail)
+                    .map(|cell| cell.ch)
+                    .collect()
+            })
+            .collect(),
+    )
+}
+
+/// What in the rows of a card is cut short (`…`) or run into the label beside it, said as a kind,
+/// with the numbers made one (the same cut on another sample is the same kind).
+fn card_faults(key: &str, line: &str, found: &mut Vec<String>) {
+    const LABELS: [&str; 20] = [
+        "Load",
+        "Top core",
+        "Frequency",
+        "Threads",
+        "App",
+        "Wired",
+        "Cached",
+        "Swap",
+        "Uploading",
+        "Received",
+        "Downloading",
+        "Sent",
+        "Reading",
+        "Writing",
+        "Read",
+        "Written",
+        "Memory",
+        "Average",
+        "Temperature",
+        "Power",
+    ];
+    // A gauge has the mount of the disk in it, a path that is cut short by design.
+    if line.contains('\u{2501}') {
+        return;
+    }
+    let said = line.trim().replace(|ch: char| ch.is_ascii_digit(), "0");
+    if line.contains('…') {
+        found.push(format!("{key}: cut short with an ellipsis: {said:?}"));
+    }
+    // Where each label begins and ends in this row of the card.
+    let chars: Vec<char> = line.chars().collect();
+    let mut stands: Vec<(usize, usize, &str)> = Vec::new();
+    for label in LABELS {
+        let width = label.chars().count();
+        for at in 0..chars.len().saturating_sub(width - 1) {
+            let here: String = chars[at..at + width].iter().collect();
+            let before = at == 0 || chars[at - 1] == ' ';
+            let after = at + width == chars.len() || chars[at + width] == ' ';
+            if here == label && before && after {
+                stands.push((at, at + width, label));
+            }
+        }
+    }
+    stands.sort_unstable();
+    for pair in stands.windows(2) {
+        if pair[1].0 <= pair[0].1 {
+            found.push(format!(
+                "{key}: {:?} and {:?} with no column between them: {said:?}",
+                pair[0].2, pair[1].2
+            ));
+        }
+    }
+}
+
+/// On the cells of a terminal what a card says is whole: no number, no label and no caption is cut
+/// short (`…`: "225 KiB…" is a number that says nothing), and two labels side by side have a column
+/// of their own between them ("Uploading Received" run together read as one). What does not fit the
+/// card is left out, as the third figure is. At every width from 96 to 160 columns, one after the
+/// other, at three heights; on the machine of the fixture and on one whose network and disk have the
+/// most characters their numbers do.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn what_a_card_says_is_not_cut_short_nor_run_together_at_any_width_on_cells() {
+    let mut found = std::collections::BTreeMap::<String, Vec<String>>::new();
+    let (mut looked, mut fast) = (0, 0);
+    for (machine, fixture) in [("", Fixture::small()), ("heavy ", Fixture::small().heavy())] {
+        let session = session_over(fixture, TICK);
+        let mut page = open_on_cells(&session, (160, 48)).expect("the page opens");
+        for rows in [24_u16, 36, 48] {
+            for cols in 96..=160_u16 {
+                page.resize(f32::from(cols) * COLUMN, f32::from(rows) * ROW)
+                    .expect("the window is another size");
+                page.advance(0.2).expect("the page keeps drawing");
+                let grid = grid_of(&page, (cols, rows));
+                for key in ["cpu", "memory", "network", "disk", "gpu"] {
+                    let Some(lines) = card_rows(&page, &grid, key) else {
+                        continue;
+                    };
+                    looked += 1;
+                    if machine == "heavy "
+                        && lines
+                            .iter()
+                            .any(|line| line.contains("MiB/s") || line.contains("GiB/s"))
+                    {
+                        fast += 1;
+                    }
+                    for line in lines {
+                        let mut faults = Vec::new();
+                        card_faults(key, &line, &mut faults);
+                        for fault in faults {
+                            found
+                                .entry(format!("{machine}{fault}"))
+                                .or_default()
+                                .push(format!("{cols}x{rows}"));
+                        }
+                    }
+                }
+            }
+        }
+        drop(session);
+    }
+    assert!(looked >= 1800, "only {looked} cards were looked at");
+    assert!(
+        fast >= 200,
+        "the heavy machine had a card with a fast rate {fast} times"
+    );
+    assert!(found.is_empty(), "{} kinds: {found:#?}", found.len());
 }
 
 /// What stands past the box it is in, in the cells it does so by, said once for each.

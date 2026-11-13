@@ -85,7 +85,9 @@ fn open_cells(
         .limits(limits(None))
         .peer(program)
         .open()?;
-    page.wait_for(WITHIN, |page| page.says("load "))?;
+    // The first sample is in once the cards speak (the load has its own word at some widths and
+    // another at others).
+    page.wait_for(WITHIN, |page| page.says("Memory"))?;
     page.advance(0.5)?;
     Ok(page)
 }
