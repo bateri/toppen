@@ -1,11 +1,12 @@
 //! The pictures of docs/, made from the page as it is: the page and the program's handlers in one
 //! process (as `page_tests` runs them), over a fixture machine, laid out and drawn in the fonts of
-//! this machine (macOS: SF Mono, or Menlo, for the terminal's face, as bateri's default is; SF for the
+//! this machine (macOS: SF Mono for the terminal's face, as bateri's default is; SF for the
 //! system's) by pencere's host with no screen. Not a terminal's drawing — no shaping, no shadows —
 //! but the same boxes, words and colours where the kit puts them. Nothing in them is from the machine
 //! they are made on: not a process, a host name or a command line.
 //!
-//! They need the system's fonts, so they are not part of the gate: `make shots` makes them.
+//! They draw in the fonts of the machine they are made on, so they are not part of the gate: `make
+//! shots` makes them.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -19,19 +20,12 @@ use crate::sample::fixture::Fixture;
 /// A page as large as a terminal pane on a laptop.
 const BIG: (f32, f32) = (1280.0, 800.0);
 
-/// The fonts a Mac draws a terminal and its system in: bateri's terminal face is SF Mono where the
-/// system has it, else Menlo.
+/// The fonts of this machine: the pictures' own layer (`Fonts::installed`), which draws as the live
+/// terminal does: SF Mono and SF on a Mac (as bateri's), with the bold and italic of their variable
+/// faces, and for a character they lack the first face of the machine that has it. Where the
+/// machine has none, the faces the program carries.
 fn fonts() -> Fonts {
-    let read = |path: &str| {
-        std::fs::read(path)
-            .unwrap_or_else(|why| panic!("{path}: {why} (make shots needs the system's fonts)"))
-    };
-    let terminal = std::fs::read("/System/Library/Fonts/SFNSMono.ttf")
-        .unwrap_or_else(|_| read("/System/Library/Fonts/Menlo.ttc"));
-    Fonts::none()
-        .terminal(&terminal)
-        .and_then(|fonts| fonts.system(&read("/System/Library/Fonts/SFNS.ttf")))
-        .expect("the fonts")
+    Fonts::installed()
 }
 
 fn docs(name: &str) -> PathBuf {
