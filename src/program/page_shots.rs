@@ -171,5 +171,3 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
 
 #[path = "page_terminal.rs"]
 mod terminal;
-#[path = "page_tui.rs"]
-mod tui;

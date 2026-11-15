@@ -95,12 +95,7 @@ local function render(size, now, reduce_motion)
 		panel:child(filter.view())
 		panel:child(b.div():grow(1):min_h(0):col():child(detail.view(tab.view(detail.table_width(S.inner)))))
 	end
-	-- On a terminal of few rows the panel has no room round it but a row above and the sides.
-	local above, below = SIZE.gap, SIZE.pad
-	if kit.tight() then
-		below = 0
-	end
-	root:child(b.div():grow(1):min_h(0):col():px(SIZE.pad):pt(above):pb(below):child(panel))
+	root:child(b.div():grow(1):min_h(0):col():px(SIZE.pad):pt(SIZE.gap):pb(SIZE.pad):child(panel))
 	root:child(status.view())
 	actions.view(root)
 	help.view(root)

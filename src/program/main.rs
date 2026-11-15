@@ -1,8 +1,8 @@
 //! toppen: a system monitor in the terminal pane, what `top` and `btop` do. In a terminal that shows
-//! pencere views the monitor opens in the pane; in one that does not, the program draws the same page
-//! with the characters of the terminal (`pencere-tui`, the `terminal` feature, on by default); where it
-//! cannot (`PENCERE_TUI=0`, a terminal it cannot take, a build without the feature), it prints a
-//! summary of the machine and ends, as `top -l 1` does.
+//! pencere views the monitor opens in the pane; in one that speaks the Kitty graphics protocol and does
+//! not, the program draws the same page as pictures in the terminal (`pencere-tui`, the `terminal`
+//! feature, on by default); where it cannot (`PENCERE_TUI=0`, a terminal it cannot take, a build without
+//! the feature), it prints a summary of the machine and ends, as `top -l 1` does.
 //!
 //! The program looks at the machine and keeps what it saw; the page (`src/view/`, in pencere's kit)
 //! is the monitor, drawn by the terminal, and asks the program for what it needs with the calls and
@@ -52,7 +52,7 @@ use text::summary::Summary;
 
 /// The words under the summary of a terminal that was given no monitor.
 #[cfg(feature = "terminal")]
-const NO_VIEWS: &str = "toppen shows its monitor in a terminal that hosts pencere (bateri), and draws it itself in\nany other (set PENCERE_TUI=1 to ask for that); here it was not shown, so this is the summary.";
+const NO_VIEWS: &str = "toppen shows its monitor in a terminal that hosts pencere (bateri), and draws it itself in one that\nspeaks Kitty graphics (set PENCERE_TUI=1 to ask for that); here it was not shown, so this is the summary.";
 /// The words under the summary of a build that has no screen of its own.
 #[cfg(not(feature = "terminal"))]
 const NO_VIEWS: &str = "toppen shows its monitor in a terminal that hosts pencere (bateri); this build does not draw it\nin any other, so this is the summary. The build that does is the one `install.sh` fetches.";

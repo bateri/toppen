@@ -1,7 +1,6 @@
 -- The status line (the library's `u:status`): the machine, how long it has been up, how often it is
 -- looked at, and the one thing to do about it: pause.
 
-local shortcuts = require("@pencere/keys")
 local kit = require("../lib/kit")
 local format = require("../lib/format")
 local commands = require("./commands")
@@ -85,24 +84,6 @@ local function hint(id, words)
 	return row:child(b.text(words))
 end
 
--- How wide `hint(id, words)` is where the page is laid out on a terminal's cells (nil elsewhere, where
--- the bar's guess is near): each cap of the keys is its letters between a column each way, a column
--- is 8 points, and the item has a column more each way.
-local function hint_width(id, words)
-	if not kit.in_cells() then
-		return nil
-	end
-	local columns = utf8.len(words) + 2
-	local keys = commands.first(id)
-	if keys ~= nil then
-		columns += 1
-		for _, cap in shortcuts.caps(keys) do
-			columns += math.max(utf8.len(cap) + 2, 2)
-		end
-	end
-	return columns * 8
-end
-
 function status.view()
 	local machine = S.boot.machine
 	local start = { { key = "host", words = kit.host_shown(machine.host), priority = 9 } }
@@ -130,7 +111,6 @@ function status.view()
 	finish[#finish + 1] = {
 		key = "filter",
 		words = hint("filter", "filter"),
-		width = hint_width("filter", "filter"),
 		press = true,
 		tip = "Filter the processes",
 		priority = 2,
@@ -138,7 +118,6 @@ function status.view()
 	finish[#finish + 1] = {
 		key = "palette",
 		words = hint("palette", "commands"),
-		width = hint_width("palette", "commands"),
 		press = true,
 		tip = "Find a command or a process",
 		priority = 3,
@@ -146,7 +125,6 @@ function status.view()
 	finish[#finish + 1] = {
 		key = "help",
 		words = hint("help", "keys"),
-		width = hint_width("help", "keys"),
 		press = true,
 		tip = "Show the keys and the commands",
 		priority = 6,
@@ -154,7 +132,6 @@ function status.view()
 	finish[#finish + 1] = {
 		key = "pause",
 		words = hint("pause", S.paused and "resume" or "pause"),
-		width = hint_width("pause", S.paused and "resume" or "pause"),
 		press = true,
 		tip = S.paused and "Resume updates" or "Pause updates",
 		tone = S.paused and "warn" or nil,

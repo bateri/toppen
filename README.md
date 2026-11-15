@@ -16,10 +16,10 @@ curl -fsSL https://raw.githubusercontent.com/bateri/toppen/main/install.sh | sh
 ```
 
 A terminal that hosts pencere views ([bateri](https://github.com/bateri/bateri), from its 0.23) shows the
-view in its pane. Any other terminal is drawn on: toppen shows the same page with the characters of the
-terminal (256 colours at least; pictures in Kitty's graphics where the terminal takes them, as half blocks where it does not; some keys, ⌃⇧ chords for one, do not
-arrive without the Kitty keyboard protocol, and the page has an F-key for them). `PENCERE_TUI=1` asks for
-that in any terminal, `PENCERE_TUI=0` for a summary of the machine, as `top -l 1` prints one, instead.
+view in its pane. A terminal that speaks Kitty's graphics protocol (Ghostty, kitty) is drawn on:
+toppen shows the same page there as pictures, on a keyboard where Ctrl is what Cmd is on a Mac. Any other
+terminal is given a summary of the machine, as `top -l 1` prints one. `PENCERE_TUI=1` asks for the drawing
+in any terminal, `PENCERE_TUI=0` for the summary.
 
 The installer takes the newest release (or `TOPPEN_VERSION=0.1.0`), checks it against the release's
 `SHA256SUMS`, and puts it in `~/.local/bin` (`TOPPEN_INSTALL=<dir>` puts it elsewhere). A file a
@@ -166,9 +166,10 @@ calls and topics of `docs/calls.md`. A signal names its process by id and start 
 reads the start again right before it sends: a process that ended and whose id was used again is not
 signalled.
 
-In a terminal that does not host pencere views, the same program draws the page itself with the
-characters of the terminal (`pencere-tui`, in the file), on a keyboard where Ctrl is what Cmd is on a
-Mac; with `PENCERE_TUI=0`, or with its output piped, it prints the summary of the machine.
+In a terminal that does not host pencere views, the same program draws the page itself as pictures
+where the terminal speaks Kitty graphics (`pencere-tui`, in the file), on a keyboard where Ctrl is what Cmd
+is on a Mac; elsewhere, with `PENCERE_TUI=0`, or with its output piped, it prints the summary of the
+machine.
 
 ## Work on it
 
@@ -181,8 +182,8 @@ make dev         # run it from its files in a pane that hosts pencere
 
 The file has two builds. The default draws the page itself in a terminal that hosts nothing (the
 `terminal` feature, which takes `pencere-tui` with it); `cargo build --no-default-features` makes the
-smaller one that does not, which prints the summary there. The file that is shipped is built with
-`cargo build --profile dist` (LTO, one code generation unit, stripped).
+smaller one that does not, which prints the summary there. `[profile.dist]` (LTO, one code generation
+unit, stripped) is the profile for the file that is shipped; `make dist` does not use it yet.
 
 `make check` needs Rust 1.99 or later and Node 22 (for the installer's tests and the release tools).
 It is the gate GitHub runs on every push and pull request, on Linux and macOS; how a release is made

@@ -835,12 +835,8 @@ function tab.view(width)
 		numbers = false,
 		-- A process is acted on, not a value in it: the table chooses rows.
 		select = "row",
-		-- On the cells of a terminal a row is 18 points, the same as its row of cells: the spacers above
-		-- and below the rows the table makes stand for as many rows as they are points of (26 would be
-		-- 1.4 rows of a spacer for each row made, and the rows would move as the window moves).
-		row_height = kit.in_cells() and 18 or ROW,
-		-- The head is one row of cells (a taller one is a row of nothing under its names).
-		head_height = kit.in_cells() and 18 or ROW + 4,
+		row_height = ROW,
+		head_height = ROW + 4,
 	})
 end
 

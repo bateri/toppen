@@ -290,7 +290,7 @@ local function history(title, value, series, role, ceiling, inner)
 	head:child(b.spacer())
 	head:child(b.text(value):weight(600):color(role):no_shrink())
 	local box = b.div():col():gap(3):child(head)
-	box:child(b.div():rounded(4):bg("raised1"):clip():child(graph.area({ { values = series, role = role } }, KEPT, ceiling, inner, kit.in_cells() and 54 or 44)))
+	box:child(b.div():rounded(4):bg("raised1"):clip():child(graph.area({ { values = series, role = role } }, KEPT, ceiling, inner, 44)))
 	return box
 end
 
@@ -308,7 +308,7 @@ local function environment(info, inner)
 	if secrets > 0 then
 		head:child(u:button("env-reveal", {
 			title = D.reveal and "Hide secrets" or string.format("Show %d secrets", secrets),
-			icon = kit.icon_for(D.reveal and "eye-off" or "eye"),
+			icon = D.reveal and "assets/icons/eye-off.svg" or "assets/icons/eye.svg",
 			tip = "Values whose names look like passwords, tokens or keys are hidden until shown",
 		}))
 	end
@@ -331,7 +331,7 @@ local function environment(info, inner)
 		end
 		if entry.secret then
 			line:child(u:icon_button("env-eye-" .. index, {
-				icon = kit.icon_for(shown and "eye-off" or "eye"),
+				icon = shown and "assets/icons/eye-off.svg" or "assets/icons/eye.svg",
 				label = (shown and "Hide " or "Show ") .. entry.name,
 				size = 20,
 			}))

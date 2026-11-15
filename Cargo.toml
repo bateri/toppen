@@ -26,16 +26,17 @@ sysinfo = { version = "0.38", default-features = false, features = ["system", "n
 regex = "1"
 # What sysinfo does not say, and the signals: the machine's name, kill(2), setpriority(2).
 libc = "0.2"
-# The program's own screen where the terminal hosts no view: the page drawn with the characters of
-# the terminal it is started in (the `terminal` feature). Built with the interpreter compiled by the
-# build (`precompile`) and no PDF reader: a monitor shows none, and neither the code generator nor the
-# reader is then in the file.
+# The program's own screen where the terminal hosts no view: the page drawn as pictures in the terminal
+# it is started in, where that speaks the Kitty graphics protocol (the `terminal` feature). Built with
+# the interpreter compiled by the build (`precompile`) and no PDF reader: a monitor shows none, and
+# neither the code generator nor the reader is then in the file.
 pencere-tui = { git = "https://github.com/bateri/pencere", rev = "02b59c336724a6010b042518d49400a077381708", optional = true, default-features = false, features = ["precompile"] }
 
 [features]
-# Two builds: with the screen (the default: a terminal that does not host pencere shows the monitor
-# drawn with its characters), and without it (`--no-default-features`: the smaller file, for a terminal
-# that hosts pencere and for the person who wants the summary and nothing more).
+# Two builds: with the screen (the default: a terminal that does not host pencere but speaks the Kitty
+# graphics protocol shows the monitor drawn as pictures), and without it (`--no-default-features`: the
+# smaller file, for a terminal that hosts pencere and for the person who wants the summary and nothing
+# more).
 default = ["terminal"]
 terminal = ["dep:pencere-tui"]
 
@@ -54,10 +55,6 @@ pencere-view = { git = "https://github.com/bateri/pencere", rev = "02b59c336724a
 # The files of a page's bundle (`Assets`): a test's own script beside the page; and what a page's
 # calls are held to (`ModuleLimits`).
 pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "02b59c336724a6010b042518d49400a077381708" }
-# The cells of a terminal a test lays the page out on and draws it into (the pictures of the page in
-# characters, `page_tui.rs`): in the tests of both builds, with what a test builds with has (the code
-# generator and the PDF reader; the file that is shipped is built apart from them).
-pencere-tui = { git = "https://github.com/bateri/pencere", rev = "02b59c336724a6010b042518d49400a077381708" }
 
 # The page tests compile the kit's interpreter to machine code, with wasmtime's code generator, as
 # each page opens; built without optimization (a debug build) that takes some 13 seconds a page,

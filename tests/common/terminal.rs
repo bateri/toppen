@@ -199,31 +199,6 @@ impl Terminal {
         plain(&self.raw)
     }
 
-    /// Waits for `what` to be on the screen (in what was written since `from`, a length of `raw`).
-    pub fn until_since(&mut self, from: usize, what: &str, limit: Duration) -> bool {
-        self.until_with(from, limit, |text| text.contains(what))
-    }
-
-    /// Waits for what was written since `from` (a length of `raw`), as text, to be what `wanted` says.
-    pub fn until_with(
-        &mut self,
-        from: usize,
-        limit: Duration,
-        wanted: impl Fn(&str) -> bool,
-    ) -> bool {
-        let end = Instant::now() + limit;
-        loop {
-            self.pump();
-            if wanted(&plain(&self.raw[from.min(self.raw.len())..])) {
-                return true;
-            }
-            if self.ended_now() || Instant::now() >= end {
-                return false;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-
     /// Reads what the program writes for `wait`, and does nothing else with it.
     pub fn settle(&mut self, wait: Duration) {
         let end = Instant::now() + wait;
@@ -234,11 +209,6 @@ impl Terminal {
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-    }
-
-    /// Waits for `what` to be written.
-    pub fn until(&mut self, what: &str, limit: Duration) -> bool {
-        self.until_since(0, what, limit)
     }
 
     /// Whether the program has ended (and how, once).
@@ -294,12 +264,6 @@ impl Drop for Terminal {
     }
 }
 
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
-}
-
 /// How many times `needle` is in `haystack`.
 pub fn count(haystack: &[u8], needle: &[u8]) -> usize {
     haystack
@@ -351,94 +315,6 @@ pub fn sent(raw: &[u8]) -> Vec<Sent> {
         at = end + 2;
     }
     found
-}
-
-/// What `text` says, written in base 64 (the standard alphabet; what is not of it is skipped).
-fn unbase64(text: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    let (mut bits, mut have) = (0_u32, 0_u32);
-    for &c in text {
-        let value = match c {
-            b'A'..=b'Z' => c - b'A',
-            b'a'..=b'z' => c - b'a' + 26,
-            b'0'..=b'9' => c - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => continue,
-        };
-        bits = bits << 6 | u32::from(value);
-        have += 6;
-        if have >= 8 {
-            have -= 8;
-            out.push(u8::try_from(bits >> have).unwrap_or(0));
-            bits &= (1 << have) - 1;
-        }
-    }
-    out
-}
-
-/// The pixels the program sent, picture by picture and edit by edit: each a row after row of RGBA (`f=32`;
-/// a terminal that says it takes no packed pixels is sent them as they are), whole or in the chunks a large
-/// one comes in.
-pub fn pixels(raw: &[u8]) -> Vec<Vec<u8>> {
-    let mut found = Vec::new();
-    let mut open: Option<Vec<u8>> = None;
-    let mut at = 0;
-    while at + 3 <= raw.len() {
-        if &raw[at..at + 3] != b"\x1b_G" {
-            at += 1;
-            continue;
-        }
-        let from = at + 3;
-        let mut end = from;
-        while end < raw.len() && !(raw[end] == 0x1b && raw.get(end + 1) == Some(&b'\\')) {
-            end += 1;
-        }
-        let command = &raw[from..end];
-        at = end + 2;
-        let (keys, data) = match command.iter().position(|byte| *byte == b';') {
-            Some(split) => (&command[..split], &command[split + 1..]),
-            None => (command, &command[..0]),
-        };
-        let keys = String::from_utf8_lossy(keys);
-        let has = |name: &str| keys.split(',').any(|pair| pair == name);
-        let starts = keys.split(',').any(|pair| pair.starts_with("a="));
-        let more = has("m=1");
-        if starts {
-            open = None;
-            if has("f=32") && !keys.split(',').any(|pair| pair.starts_with("o=")) {
-                if more {
-                    open = Some(data.to_vec());
-                } else {
-                    found.push(unbase64(data));
-                }
-            }
-        } else if let Some(mut so_far) = open.take() {
-            so_far.extend_from_slice(data);
-            if more {
-                open = Some(so_far);
-            } else {
-                found.push(unbase64(&so_far));
-            }
-        }
-    }
-    found
-}
-
-/// How many of the pixels the program sent (`pixels`) `is` says yes to, given as the three of colour.
-pub fn pixels_that(raw: &[u8], is: impl Fn(u8, u8, u8) -> bool) -> usize {
-    pixels(raw)
-        .iter()
-        .flat_map(|picture| picture.as_chunks::<4>().0.iter())
-        .filter(|pixel| is(pixel[0], pixel[1], pixel[2]))
-        .count()
-}
-
-/// `text` with its runs of white space made one space, as much of it as a failure's message can say.
-pub fn squeezed(text: &str) -> String {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    let line = words.join(" ");
-    line.chars().take(700).collect()
 }
 
 /// `raw` as the text a screen would hold, the escape sequences (CSI, OSC and the pictures' APC) taken out.

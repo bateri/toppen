@@ -188,9 +188,6 @@ pub struct Fixture {
     total_tx: u64,
     /// A card's details are open: the sensors are told.
     detail: bool,
-    /// How many times the rates of the network and the disk are what they are (1 for the fixture as
-    /// it is): a test of the longest words the cards have to say.
-    rates: f64,
 }
 
 /// The listening sockets of the fixture, which do not change.
@@ -383,19 +380,7 @@ impl Fixture {
             total_rx: 40 * GIB,
             total_tx: 6 * GIB,
             detail: false,
-            rates: 1.0,
         }
-    }
-
-    /// The same machine with a network and a disk a few thousand times as fast, and as much sent
-    /// and received: the numbers have the most characters they do.
-    #[cfg(test)]
-    #[must_use]
-    pub fn heavy(mut self) -> Self {
-        self.rates = 4000.0;
-        self.total_rx = 987 * GIB;
-        self.total_tx = 654 * GIB;
-        self
     }
 }
 
@@ -502,9 +487,8 @@ impl Source for Fixture {
         };
 
         let burst = if noise(tick / 7) > 0.8 { 6.0 } else { 1.0 };
-        let rx = (180_000.0 + 140_000.0 * wave(tick, 40, 5)) * burst * self.rates;
-        let tx =
-            (30_000.0 + 25_000.0 * wave(tick, 55, 11) + 40_000.0 * noise(tick + 77)) * self.rates;
+        let rx = (180_000.0 + 140_000.0 * wave(tick, 40, 5)) * burst;
+        let tx = 30_000.0 + 25_000.0 * wave(tick, 55, 11) + 40_000.0 * noise(tick + 77);
         self.total_rx += rx as u64;
         self.total_tx += tx as u64;
         let network = Network {
@@ -532,8 +516,8 @@ impl Source for Fixture {
         };
 
         let writing = if noise(tick / 11 + 3) > 0.7 { 9.0 } else { 1.0 };
-        let read = 2_000_000.0 * wave(tick, 70, 30) * noise(tick + 5) * 3.0 * self.rates;
-        let write = 600_000.0 * writing * (0.5 + noise(tick + 9)) * self.rates;
+        let read = 2_000_000.0 * wave(tick, 70, 30) * noise(tick + 5) * 3.0;
+        let write = 600_000.0 * writing * (0.5 + noise(tick + 9));
         let volumes = vec![
             Volume {
                 name: "/dev/disk3s5".to_owned(),

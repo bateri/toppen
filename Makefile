@@ -82,8 +82,10 @@ test-tools:
 test-features:
 	cargo clippy --locked --no-default-features --all-targets -- -D warnings
 	cargo test --locked --no-default-features --bin toppen
-	@! cargo tree --locked -p toppen -e normal | grep -q 'cranelift-codegen' || { echo "test-features: the code generator (cranelift-codegen) is in the tree of toppen"; exit 1; }
-	@! cargo tree --locked -p toppen -e normal --no-default-features | grep -q 'cranelift-codegen\|pencere-tui v' || { echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; }
+	@tree="$$(cargo tree --locked -p toppen -e normal)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen'; then echo "test-features: the code generator (cranelift-codegen) is in the tree of toppen"; exit 1; fi
+	@tree="$$(cargo tree --locked -p toppen -e normal --no-default-features)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen\|pencere-tui v'; then echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; fi
 
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests, the
 # installer's tests.

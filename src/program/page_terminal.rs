@@ -1,13 +1,13 @@
-//! The page as `pencere-tui` runs it where no terminal hosts it: in the cells of a plain terminal, on a
-//! keyboard that is not a Mac's (Ctrl is the main modifier, there is no ⌘). What the keys of a Mac do,
-//! the keys of Linux do, and what a terminal cannot send is not a key of the page.
+//! The page as `pencere-tui` runs it where no terminal hosts it: drawn in pixels for a terminal that speaks
+//! the Kitty graphics protocol, on a keyboard that is not a Mac's (Ctrl is the main modifier, there is no
+//! ⌘). What the keys of a Mac do, the keys of Linux do, and what a terminal cannot send is not a key of
+//! the page.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pencere_drive::headless::{Error, Headless, InProcess};
-use pencere_tui::Cells;
 use pencere_view::{Drawing, Key, KeyConvention, Shortcut};
 
 use crate::model::processes::Column;
@@ -17,23 +17,19 @@ use crate::session::Session;
 
 const WITHIN: Duration = Duration::from_secs(20);
 
-/// A column of the cells the page is laid out on, points, and a row.
-const COLUMN: f32 = 8.0;
-const ROW: f32 = 18.0;
+/// The windows a terminal of 80 by 24 cells and one of 160 by 48 give the page, points.
+const SIZES: [(f32, f32); 2] = [(640.0, 432.0), (1280.0, 864.0)];
 
-const SIZES: [(u16, u16); 2] = [(80, 24), (160, 48)];
-
-/// The page of a terminal of `cols` by `rows` that hosts nothing, on a Linux keyboard.
-fn open_on(session: &Arc<Session>, (cols, rows): (u16, u16)) -> Result<Page, Error> {
+/// The page of a terminal window of `width` by `height` points that hosts nothing, on a Linux keyboard.
+fn open_on(session: &Arc<Session>, (width, height): (f32, f32)) -> Result<Page, Error> {
     let program = InProcess::new(crate::options(session, &Arc::new(Mutex::new(None))));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64());
     let mut page = Headless::app(env!("CARGO_MANIFEST_DIR"))
-        .size(f32::from(cols) * COLUMN, f32::from(rows) * ROW)
-        .measure(Cells::new(COLUMN, ROW))
+        .size(width, height)
         .keyboard(KeyConvention::Linux)
-        .draws(vec![Drawing::Cells])
+        .draws(vec![Drawing::Shadow])
         .wall_clock(now, 0)
         .limits(limits(None))
         .peer(program)
@@ -44,7 +40,7 @@ fn open_on(session: &Arc<Session>, (cols, rows): (u16, u16)) -> Result<Page, Err
 }
 
 /// The graphs move, the table sorts and filters, the palette and the help open, a card is looked into:
-/// with the keys of a Linux keyboard, at 80×24 and wide.
+/// with the keys of a Linux keyboard, in a small window and a wide one.
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_linux_keyboard_sorts_filters_opens_the_palette_the_help_and_a_card_with_its_keys()
@@ -115,16 +111,16 @@ fn the_keys_of_the_commands_are_one_for_each_and_none_a_terminal_cannot_send_on_
     let mut states: Vec<(String, Page)> = Vec::new();
 
     let session = session_over(Fixture::small(), Duration::from_secs(1));
-    let page = open_on(&session, (160, 48))?;
+    let page = open_on(&session, SIZES[1])?;
     states.push(("the overview".to_owned(), page));
 
     let session = session_over(Fixture::small(), Duration::from_secs(1));
-    let mut page = open_on(&session, (160, 48))?;
+    let mut page = open_on(&session, SIZES[1])?;
     on_my_processes(&session, &mut page);
     states.push(("a process of the person".to_owned(), page));
 
     let session = session_over(Fixture::small(), Duration::from_secs(1));
-    let mut page = open_on(&session, (160, 48))?;
+    let mut page = open_on(&session, SIZES[1])?;
     page.press("p")?;
     page.wait_for(WITHIN, |page| {
         page.words()

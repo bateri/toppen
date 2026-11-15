@@ -37,18 +37,6 @@ local function quiet(words)
 	return b.text(words):color("quiet"):truncate():min_w(0)
 end
 
--- On the cells of a terminal a character is a column, 8 points, whatever its size: how many columns a text
--- takes, and how many the inside of a card (`w` points across, less what the cells round its padding to)
--- has. What is cut short there says nothing ("225 KiB…"), so what does not fit the room is left out.
-local COLUMN = 8
-local function columns(words)
-	return utf8.len(words) or #words
-end
-
-local function room_of(w)
-	return math.max(math.floor((w - 4) / COLUMN), 0)
-end
-
 -- How many samples a graph shows: the last minute, and at least thirty samples.
 function cards.window()
 	return math.max(30, math.min(kit.SIZE.kept, math.ceil(60 / math.max(S.interval, 0.1))))
@@ -95,38 +83,10 @@ end
 
 -- The figures under the value: up to three, each a quiet label over its value.
 local function figures(list, w)
-	local gap = 8
+	local row = b.div():row():gap(8):h(FIGURES):w(w):no_shrink()
+	-- A narrow card says its figures smaller, so that "673 KiB/s" fits its column.
 	local column = (w - 8 * math.max(#list - 1, 0)) / math.max(#list, 1)
-	-- What a column has to hold: on the cells of a terminal a character is a cell, 8 points, whatever its
-	-- size, and a figure is as wide as it has characters (a label cut short is a word that says nothing).
-	local needed = 66
-	if kit.in_cells() then
-		-- As many figures as there are columns for, each as wide as the widest: two columns of room between
-		-- two labels where there is the room (a gap of one reads as a phrase: "Uploading Received"), one
-		-- where there is not, and the last figures left out where there is not even that.
-		local room = room_of(w)
-		local count = #list
-		while count > 1 do
-			local widest = 0
-			for index = 1, count do
-				widest = math.max(widest, columns(list[index][1]), columns(list[index][2]))
-			end
-			if count * widest + (count - 1) * 2 <= room then
-				gap = 16
-				break
-			elseif count * widest + (count - 1) <= room then
-				break
-			end
-			count -= 1
-		end
-		if count < #list then
-			list = table.move(list, 1, count, 1, {})
-		end
-		column = (w - gap * math.max(#list - 1, 0)) / math.max(#list, 1)
-		needed = 0
-	end
-	local row = b.div():row():gap(gap):h(FIGURES):w(w):no_shrink()
-	if column < needed and #list > 2 then
+	if column < 66 and #list > 2 then
 		-- Too narrow for three: two whole figures say more than three cut ones.
 		list = { list[1], list[2] }
 		column = (w - 8) / 2
@@ -140,22 +100,11 @@ local function figures(list, w)
 	return row
 end
 
--- The figures on one line, for a compact card, in `w` points: on the cells of a terminal as many as the
--- line has columns for.
-local function figures_line(list, w)
+-- The figures on one line, for a compact card.
+local function figures_line(list)
 	local parts = {}
-	local used = 0
-	local room = room_of(w)
 	for _, figure in list do
-		local part = string.lower(figure[1]) .. " " .. figure[2]
-		if kit.in_cells() then
-			local more = columns(part) + (#parts > 0 and 3 or 0)
-			if used + more > room then
-				break
-			end
-			used += more
-		end
-		parts[#parts + 1] = part
+		parts[#parts + 1] = string.lower(figure[1]) .. " " .. figure[2]
 	end
 	return quiet(table.concat(parts, " · "))
 end
@@ -179,17 +128,12 @@ local function card(spec, w, h)
 	if h >= ROOMY then
 		-- Without the room for its caption, the card says it beside its title where nothing else is.
 		local side = spec.side or (h < FULL and spec.caption) or nil
-		-- On the cells of a terminal a caption that is more than the room beside the title is left out,
-		-- not cut short.
-		if side and kit.in_cells() and columns(spec.title) + 1 + columns(side) > room_of(inner_w) then
-			side = nil
-		end
 		if side and w >= 200 then
 			head:child(b.div():grow(1):min_w(0):row():justify_end():child(quiet(side)))
 		end
 		box:child(head)
 		used += HEAD + GAP
-		if h >= FULL and spec.caption and not (kit.in_cells() and columns(spec.caption) > room_of(inner_w)) then
+		if h >= FULL and spec.caption then
 			box:child(b.div():h(CAPTION):no_shrink():child(b.text(spec.caption):text_size(11.5):color("dim"):truncate():min_w(0)))
 			used += CAPTION + GAP
 		end
@@ -211,7 +155,7 @@ local function card(spec, w, h)
 		graph_h -= STRIP + GAP
 	end
 	if graph_h >= GRAPH_MIN then
-		box:child(spec.graph(inner_w, graph_h, role):id(name .. "/graph"))
+		box:child(spec.graph(inner_w, graph_h, role))
 	else
 		box:child(b.spacer())
 	end
@@ -219,7 +163,7 @@ local function card(spec, w, h)
 		box:child(spec.strip(inner_w, STRIP))
 	end
 	if h < ROOMY then
-		box:child(b.div():row():items_center():h(LINE):no_shrink():child(figures_line(spec.figures, inner_w)))
+		box:child(b.div():row():items_center():h(LINE):no_shrink():child(figures_line(spec.figures)))
 	end
 	return box
 end
@@ -500,19 +444,15 @@ function cards.count()
 end
 
 -- The cards at `w` by `h` points each, in the order of the overview.
--- `w` is one width for all of them, or a list of one for each.
 function cards.list(w, h)
-	local function width(index)
-		return type(w) == "table" and w[index] or w
-	end
 	local list = {
-		card(cpu_card(), width(1), h),
-		card(memory_card(), width(2), h),
-		card(network_card(), width(3), h),
-		card(disk_card(), width(4), h),
+		card(cpu_card(), w, h),
+		card(memory_card(), w, h),
+		card(network_card(), w, h),
+		card(disk_card(), w, h),
 	}
 	if cards.count() == 5 then
-		list[#list + 1] = card(gpu_card(), width(5), h)
+		list[#list + 1] = card(gpu_card(), w, h)
 	end
 	return list
 end

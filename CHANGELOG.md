@@ -4,34 +4,15 @@
 
 ### Added
 
-- **A terminal that speaks Kitty graphics is drawn on, as bateri does.** toppen shows the monitor
-  as pixels there, with its own faces, icons, bars and graphs, the mouse and the keys, where it used
-  to print a summary. A terminal with no Kitty graphics, and a multiplexer, still prints the summary;
-  `PENCERE_TUI=0` keeps it, `PENCERE_TUI=1` draws on a terminal that does host views too.
-- The palette and the settings are `mod+k` and `mod+,` (⌘ on a Mac, ⌃ elsewhere), and F2 opens the
-  settings: a terminal that is drawn on does not send the ⌘ chords.
-- Where a terminal draws no pictures, the icons of the page are characters (a magnifier, the arrows of
-  a folded branch, the eyes of the secrets, an ellipsis for what is read), and the head of the table
-  and its column lines are a row, a core's graph two rows, the rows of the tables are a row of cells
-  high (a long list does not move as it scrolls) and the status line fits the width it is given. A
-  card's parts are as many rows as the card, with no row left at its foot.
-
-- **A feature `terminal`, on by default, for the screen of its own.** `cargo build
-  --no-default-features` makes the file that does not draw a terminal that hosts nothing (it prints
-  the summary there), without `pencere-tui` and so smaller. The screen has the interpreter compiled by
-  the build and no PDF reader, so neither a code generator nor the reader is in the file. A profile `dist` (LTO, one code generation
-  unit, stripped) is the file that is shipped.
-- The keys of the page on a keyboard with no ⌘ are Ctrl's (`mod+k`), and none is one a terminal
-  cannot tell from another (Ctrl+I, Ctrl+J, Ctrl+H, Ctrl+[) or sends as another (Ctrl+Shift or
-  Ctrl+Alt with a letter): everything is in the palette as well.
+- **toppen draws the monitor in a terminal that speaks Kitty graphics,** as bateri does: the same
+  monitor as pictures, with the mouse and the keys, where it used to print a summary. A terminal with
+  no Kitty graphics, and a multiplexer, still print the summary; `PENCERE_TUI=0` keeps it everywhere.
+- The palette and the settings are `mod+k` and `mod+,` (⌘ on a Mac, Ctrl elsewhere), and F2 opens the
+  settings. Everything a key does is in the palette as well.
+- **A build without the drawing.** `cargo build --no-default-features` makes a smaller file that prints
+  the summary where no terminal hosts toppen.
 
 ### Changed
-
-- On a terminal of few rows the table has the rows: no rule under its head or the bars, no row
-  between the bar and the head, the band of the cards and the panel one row apart. The cards share the
-  columns in whole ones (none is left over at the end of the row), and a card says two whole
-  figures where it would have said three cut ones. The busy mark turns where the page is drawn
-  with characters (braille, a tenth of a second a step).
 
 - The mouse pointer is a hand over a button, a tab, a row, a head and a card, and the arrow elsewhere.
 
