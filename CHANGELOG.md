@@ -4,9 +4,10 @@
 
 ### Added
 
-- **A terminal that hosts no views is drawn on.** toppen shows the page with the characters of the
-  terminal, with the mouse and the keys, where it used to print a summary. `PENCERE_TUI=0` keeps the
-  summary; `PENCERE_TUI=1` draws on a terminal that does host views too.
+- **A terminal that speaks Kitty graphics is drawn on, as bateri does.** toppen shows the monitor
+  as pixels there, with its own faces, icons, bars and graphs, the mouse and the keys, where it used
+  to print a summary. A terminal with no Kitty graphics, and a multiplexer, still prints the summary;
+  `PENCERE_TUI=0` keeps it, `PENCERE_TUI=1` draws on a terminal that does host views too.
 - The palette and the settings are `mod+k` and `mod+,` (⌘ on a Mac, ⌃ elsewhere), and F2 opens the
   settings: a terminal that is drawn on does not send the ⌘ chords.
 - Where a terminal draws no pictures, the icons of the page are characters (a magnifier, the arrows of

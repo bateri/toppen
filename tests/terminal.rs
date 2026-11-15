@@ -1,6 +1,8 @@
-//! toppen in a terminal that hosts nothing: it draws the monitor with the characters of the terminal it is
-//! started in, takes the keys, and gives the terminal back as it was. The terminal is a pty
-//! (`common::terminal`) that answers what a terminal answers and shows what is written to it.
+//! toppen in a terminal that hosts nothing and draws pictures: it draws the monitor as one picture of the
+//! window, takes the keys and the pointer, and gives the terminal back as it was. The terminal is a pty
+//! (`common::terminal`) that answers what a terminal that draws pictures answers and keeps what is written
+//! to it; what the program sent is read as the pictures and the escape sequences it wrote. (A terminal that
+//! draws no pictures is given the summary: `e2e.rs`.)
 
 // The screen is the `terminal` feature's: the build without it has none to start.
 #![cfg(feature = "terminal")]
@@ -9,14 +11,14 @@
 
 mod common;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use common::terminal::{Start, Terminal, count};
+use common::terminal::{Start, Terminal, count, plain, sent};
 use common::{Pane, program};
 
 const LIMIT: Duration = Duration::from_secs(60);
 
-/// toppen, looking at the fixture machine, in a terminal of `size` that hosts nothing.
+/// toppen, looking at the fixture machine, in a terminal of `size` that hosts nothing and draws pictures.
 fn start(pane: &Pane, size: (u16, u16), extra: &[(&str, &str)]) -> Terminal {
     let home = pane.dir.path().to_string_lossy().into_owned();
     let state = pane.path("state").to_string_lossy().into_owned();
@@ -37,75 +39,72 @@ fn start(pane: &Pane, size: (u16, u16), extra: &[(&str, &str)]) -> Terminal {
         env: &env,
         env_remove: &["SSH_CONNECTION", "SSH_TTY", "PENCERE_TUI"],
         size,
-        graphics: false,
+        graphics: true,
     })
 }
 
-/// Waits for `needle` to be written since `from` (a length of `raw`), escape sequences and all.
-fn wait_for_bytes(terminal: &mut Terminal, from: usize, needle: &[u8]) -> bool {
-    let end = std::time::Instant::now() + LIMIT;
-    while std::time::Instant::now() < end {
-        terminal.until_since(from, "\u{ffff}", Duration::from_millis(100));
-        if count(&terminal.raw[from..], needle) > 0 {
+/// Waits until what the program has written is as `shown` says.
+fn until_shown(terminal: &mut Terminal, shown: impl Fn(&[u8]) -> bool) -> bool {
+    let end = Instant::now() + LIMIT;
+    while Instant::now() < end {
+        terminal.settle(Duration::from_millis(100));
+        if shown(&terminal.raw) {
             return true;
         }
     }
     false
 }
 
-/// Whether the text holds a character of braille: the graphs, where the terminal draws no pictures.
-fn braille(text: &str) -> bool {
-    text.chars().any(|c| ('\u{2800}'..='\u{28ff}').contains(&c))
+/// Whether the program has sent the window as one picture: the `cols` by `rows` cells of 10 by 20 pixels,
+/// a cell more each way.
+fn the_window(raw: &[u8], (cols, rows): (u16, u16)) -> bool {
+    sent(raw).iter().any(|picture| {
+        (picture.width, picture.height) == (u32::from(cols) * 10 + 10, u32::from(rows) * 20 + 20)
+    })
+}
+
+/// How many parts of the picture the program has changed in place.
+fn edits(raw: &[u8]) -> usize {
+    count(raw, b"\x1b_Ga=f,i=")
 }
 
 #[test]
-fn a_terminal_that_hosts_nothing_gets_the_monitor_drawn_in_its_cells_and_is_the_persons_again() {
+fn a_terminal_that_draws_pictures_gets_the_monitor_drawn_as_a_picture_and_is_the_persons_again() {
     let pane = Pane::new();
-    // No host answers, and nothing asks for the screen: the program waits for a host a moment, and draws.
+    // No host answers, and nothing asks for the screen: the program waits for a host a moment, asks the
+    // terminal what it draws, and draws the page as one picture of the window.
     let mut terminal = start(&pane, (160, 48), &[]);
-    assert!(terminal.until("Processes", LIMIT), "{}", terminal.text());
-    assert!(terminal.until("Threads", LIMIT), "{}", terminal.text());
-    assert!(terminal.until("CPU", LIMIT), "{}", terminal.text());
-    // The screen is the alternate one, and the graphs are the characters of braille.
-    assert_eq!(count(&terminal.raw, b"\x1b[?1049h"), 1);
-    assert!(braille(&terminal.text()), "{}", terminal.text());
-
-    // The graphs go on: the samples come, and what changed is written again.
-    let from = terminal.raw.len();
     assert!(
-        terminal.until_with(from, LIMIT, braille),
+        until_shown(&mut terminal, |raw| the_window(raw, (160, 48))),
+        "{:?}",
+        sent(&terminal.raw)
+    );
+    // The screen is the alternate one, and no text is written to it: the picture is the screen.
+    assert_eq!(count(&terminal.raw, b"\x1b[?1049h"), 1);
+    assert!(
+        !plain(&terminal.raw).contains("Processes"),
+        "{}",
+        plain(&terminal.raw)
+    );
+
+    // The graphs go on: the samples come, and what changed is written again, in place.
+    let had = terminal.raw.len();
+    assert!(
+        until_shown(&mut terminal, |raw| edits(&raw[had..]) >= 2),
         "the page draws what changes as the machine does"
     );
 
-    // The table sorts by the next column, the other way round: the head says it with an arrow.
+    // The pointer goes to a place that answers a press (the fixture's screen is the same at each start) in
+    // two steps, as a hand does, and the terminal is told it is a hand (OSC 22). The program answers as
+    // fast as it draws, which is slowly in a build for tests: the answer is waited for, not the steps.
     let from = terminal.raw.len();
-    terminal.type_bytes(b">");
-    terminal.type_bytes(b"r");
+    for y in [100, 120] {
+        terminal.type_bytes(format!("\x1b[<35;125;{y}M").as_bytes());
+        terminal.settle(Duration::from_millis(100));
+    }
     assert!(
-        terminal.until_since(from, "\u{25b4}", LIMIT),
-        "{}",
-        terminal.text()
-    );
-
-    // The palette opens with Ctrl+K and lists the commands.
-    let from = terminal.raw.len();
-    terminal.type_bytes(b"\x0b");
-    assert!(
-        terminal.until_since(from, "Sort", LIMIT),
-        "{}",
-        common::terminal::plain(&terminal.raw[from..])
-    );
-    terminal.type_bytes(b"\x1b");
-    // An Escape and what follows in one read would be one key (Alt with it).
-    std::thread::sleep(Duration::from_millis(300));
-
-    // The pointer moves down a column of the screen: it is a hand over what answers a press (a row, a
-    // head), and the terminal is told so (OSC 22).
-    let from = terminal.raw.len();
-    let moves: String = (2..=46).map(|row| format!("\x1b[<35;12;{row}M")).collect();
-    terminal.type_bytes(moves.as_bytes());
-    assert!(
-        wait_for_bytes(&mut terminal, from, b"\x1b]22;pointer"),
+        until_shown(&mut terminal, |raw| count(&raw[from..], b"\x1b]22;pointer")
+            > 0),
         "no hand was asked for"
     );
 
@@ -123,44 +122,52 @@ fn a_terminal_that_hosts_nothing_gets_the_monitor_drawn_in_its_cells_and_is_the_
         .rposition(|window| window == b"\x1b[?1049l")
         .expect("the alternate screen was left");
     assert!(entered < left);
+    let freed = raw
+        .windows(b"\x1b_Ga=d,d=A".len())
+        .rposition(|window| window == b"\x1b_Ga=d,d=A")
+        .expect("the pictures were given up");
+    let reset = raw
+        .windows(b"\x1b]22;\x1b".len())
+        .rposition(|window| window == b"\x1b]22;\x1b")
+        .expect("the pointer was given back");
+    assert!(
+        freed < left && reset < left,
+        "given back before the screen is left"
+    );
     let cursor = raw
         .windows(6)
         .rposition(|window| window == b"\x1b[?25h")
         .expect("the cursor was shown again");
     assert!(cursor > entered, "the cursor was given back");
     assert!(
-        !common::terminal::plain(raw).contains("this is the summary"),
+        !plain(raw).contains("this is the summary"),
         "the summary was printed in place of the screen"
     );
 }
 
 #[test]
-fn a_terminal_that_is_asked_to_draw_it_does_so_at_once_and_the_keys_reach_the_filter() {
+fn a_terminal_that_is_asked_to_draw_it_does_so_at_once_and_the_keys_do_not_end_it() {
     let pane = Pane::new();
     // `PENCERE_TUI=1` asks for the screen without the wait for a host.
-    let started = std::time::Instant::now();
+    let started = Instant::now();
     let mut terminal = start(&pane, (100, 30), &[("PENCERE_TUI", "1")]);
-    assert!(terminal.until("Processes", LIMIT), "{}", terminal.text());
+    assert!(
+        until_shown(&mut terminal, |raw| the_window(raw, (100, 30))),
+        "{:?}",
+        sent(&terminal.raw)
+    );
     assert!(
         started.elapsed() < Duration::from_secs(30),
         "the first frame took {:?}",
         started.elapsed()
     );
-    // The keyboard goes to the page: `/` takes it for the filter, what is typed is the filter's.
-    let from = terminal.raw.len();
-    terminal.type_bytes(b"/");
-    // The page gives the field the keyboard as it draws it, and the terminal's cursor is shown at the
-    // caret: what is typed after is the field's.
+    // The keyboard goes to the page: `/` takes it for the filter, what is typed is the filter's, and none
+    // of it is the program's own.
+    terminal.type_bytes(b"/post");
+    let had = terminal.raw.len();
     assert!(
-        wait_for_bytes(&mut terminal, from, b"\x1b[?25h"),
-        "the field did not take the keyboard: {}",
-        common::terminal::plain(&terminal.raw[from..])
-    );
-    terminal.type_bytes(b"post");
-    assert!(
-        terminal.until_since(from, "postgres", LIMIT),
-        "{}",
-        common::terminal::plain(&terminal.raw[from..])
+        until_shown(&mut terminal, |raw| edits(&raw[had..]) > 0),
+        "the page drew nothing for the keys"
     );
     terminal.type_bytes(b"\x03");
     assert_eq!(terminal.ended(LIMIT), Some(130));
