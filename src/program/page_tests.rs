@@ -500,6 +500,64 @@ fn the_pointer_is_a_hand_over_what_answers_a_press_and_the_arrow_elsewhere() {
     assert_ne!(page.cursor(), Some(Cursor::Pointer), "{name}");
 }
 
+/// A reply to the pointer that says no shape is the arrow (the kit's bridge): the hand is said at each
+/// move over what answers a press, and after a press, a release and a turn of the wheel there, not only
+/// when the pointer comes onto it. Said once, the next move took it back to the arrow.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_hand_stays_as_the_pointer_moves_presses_and_turns_the_wheel_over_what_answers_a_press() {
+    use pencere_view::{Button, Cursor, Input, Mods, Point};
+    let (_session, mut page) = open_small(WIDE);
+    for name in ["card/cpu", "procs/row/3", "procs/head/pid"] {
+        page.leave().expect("the pointer is off the page");
+        let rect = page.bounds(name).expect("the element is laid out");
+        for step in 1..=3_u8 {
+            let at = Point::new(
+                rect.x + rect.w * f32::from(step) / 4.0,
+                rect.y + rect.h / 2.0,
+            );
+            page.move_to(at).expect("the pointer moves");
+            assert_eq!(page.cursor(), Some(Cursor::Pointer), "{name}, move {step}");
+        }
+    }
+    // The edge that sizes a column keeps the library's shape as the pointer moves along it.
+    let edge = page.bounds("procs/edge/pid").expect("the edge is laid out");
+    for step in 1..=2_u8 {
+        let at = Point::new(
+            edge.x + edge.w / 2.0,
+            edge.y + edge.h * f32::from(step) / 3.0,
+        );
+        page.move_to(at).expect("the pointer moves on the edge");
+        assert_eq!(
+            page.cursor(),
+            Some(Cursor::ResizeHorizontal),
+            "edge, move {step}"
+        );
+    }
+    // A row pressed and let go, and the wheel turned over it, leave the hand.
+    let row = page.bounds("procs/row/3").expect("the row is laid out");
+    let at = Point::new(row.x + row.w / 2.0, row.y + row.h / 2.0);
+    page.move_to(at).expect("the pointer is over a row");
+    page.pointer(Input::Press {
+        at,
+        button: Button::Left,
+        mods: Mods::default(),
+        count: 1,
+    })
+    .expect("the row is pressed");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer), "pressed");
+    page.pointer(Input::Release {
+        at,
+        button: Button::Left,
+        mods: Mods::default(),
+    })
+    .expect("the row is let go");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer), "let go");
+    // The rows move under it: the pointer is over a row still.
+    page.wheel_at(at, 0.0, -1.0).expect("the wheel turns");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer), "the wheel turned");
+}
+
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_header_menu_shows_and_hides_columns() {

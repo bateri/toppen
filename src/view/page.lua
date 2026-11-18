@@ -236,13 +236,34 @@ end
 -- A shape the library asks for stays its own: the edge of a column sizes it, and a scrim is no button. (A field the host
 -- draws answers no press, so it is not asked about.)
 local NOT_A_BUTTON = { edge = true, handle = true, scrim = true }
-local pointing = false
+
+-- The inputs whose reply is the pointer's shape: a reply to one that says no shape is the arrow (the kit's bridge),
+-- so the shape is said again at each of them, not only when it changes.
+local POINTER_INPUTS = {
+	move = true,
+	leave = true,
+	press = true,
+	release = true,
+	extra_press = true,
+	extra_release = true,
+	wheel = true,
+	magnify = true,
+	smart_magnify = true,
+	rotate = true,
+	swipe = true,
+	pressure = true,
+}
+-- Where the pointer is on the page, for an input that does not say (nil off the page).
+local pointer_at = nil
 
 local function hand(reply, at)
 	local shape = type(reply) == "table" and reply.cursor or nil
 	-- The library has a shape of its own to keep (an edge, held or not) or the pointer is held: it is not the page's.
+	-- The library says its shape only when it changes: it is said again here.
 	if (shape ~= nil and shape ~= "arrow") or u.cursor ~= nil or u.capture ~= nil then
-		pointing = false
+		if shape == nil and u.cursor ~= nil then
+			return b.merge(reply, { cursor = u.cursor })
+		end
 		return reply
 	end
 	local over = false
@@ -251,12 +272,8 @@ local function hand(reply, at)
 		local part = u:part_of(name)
 		over = not (part ~= nil and NOT_A_BUTTON[part.part])
 	end
-	if over and (not pointing or shape == "arrow") then
-		pointing = true
+	if over then
 		return b.merge(reply, { cursor = "pointer" })
-	elseif not over and pointing then
-		pointing = false
-		return b.merge(reply, { cursor = "arrow" })
 	end
 	return reply
 end
@@ -271,14 +288,17 @@ local function handle(event)
 		reply = b.merge(reply, on_action(action))
 	end
 	local kind = event.type
+	if kind == "leave" then
+		pointer_at = nil
+	elseif POINTER_INPUTS[kind] and event.x ~= nil and event.y ~= nil then
+		pointer_at = { x = event.x, y = event.y }
+	end
 	if kind == "move" then
-		reply = hand(reply, { x = event.x, y = event.y })
 		tab.pointer(tab.contains({ x = event.x, y = event.y }))
 		if machine.pointer(event.x, event.y) then
 			reply = b.merge(reply, true)
 		end
 	elseif kind == "leave" then
-		reply = hand(reply, nil)
 		tab.pointer(false)
 		if machine.leave() then
 			reply = b.merge(reply, true)
@@ -297,6 +317,9 @@ local function handle(event)
 			end
 			reply = b.merge(reply, pressed)
 		end
+	end
+	if POINTER_INPUTS[kind] then
+		reply = hand(reply, pointer_at)
 	end
 	return kit.take(reply)
 end
