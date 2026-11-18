@@ -11,6 +11,7 @@
   settings. Everything a key does is in the palette as well.
 - **A build without the drawing.** `cargo build --no-default-features` makes a smaller file that prints
   the summary where no terminal hosts toppen.
+- **Each release has two files for a machine.** A small one, which bateri and kablo install, and one that draws in any terminal that speaks Kitty graphics, which `install.sh` installs.
 
 ### Changed
 

@@ -8,8 +8,8 @@ started on, so over plain `ssh` it shows the server's own CPU, memory, network, 
 
 ## Install
 
-toppen is one file, with nothing to install beside it, for macOS on Apple silicon and Linux on
-arm64 and x86_64:
+toppen is one file for each system, with nothing to install beside it, for macOS on Apple silicon
+and Linux on arm64 and x86_64:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bateri/toppen/main/install.sh | sh
@@ -24,6 +24,10 @@ in any terminal, `PENCERE_TUI=0` for the summary.
 The installer takes the newest release (or `TOPPEN_VERSION=0.1.0`), checks it against the release's
 `SHA256SUMS`, and puts it in `~/.local/bin` (`TOPPEN_INSTALL=<dir>` puts it elsewhere). A file a
 browser downloads is quarantined by macOS; one curl downloads is not.
+
+A release has two files for each system, and the one to download by hand is
+`toppen-<version>-<target>`. The `toppen-no-terminal-<version>-<target>` one is smaller and is what
+bateri and kablo install; it does not draw in a terminal by itself.
 
 The Linux files are linked statically, so that one runs on any distribution; a static program cannot
 open NVIDIA's library, so a Linux file from a release shows no NVIDIA card. A build made on the
