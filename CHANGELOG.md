@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
 ### Added
 
 - **toppen draws the monitor in a terminal that speaks Kitty graphics,** as bateri does: the same
