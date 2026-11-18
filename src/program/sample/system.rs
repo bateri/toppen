@@ -12,7 +12,7 @@ use sysinfo::{
 use super::gpu::{Gpus, celsius_of};
 use super::{
     Cpu, Disk, Features, Interface, Machine, Memory, Network, Process, Sample, Sensor, Source,
-    Volume, linux, macos,
+    Volume, linux, macos, told_sensors,
 };
 
 /// The volumes are listed again each so many samples: they change when a disk is mounted, and their
@@ -204,7 +204,7 @@ impl System {
             Some(components) => components.refresh(false),
             None => self.components = Some(Components::new_with_refreshed_list()),
         }
-        let mut sensors: Vec<Sensor> = self
+        let sensors: Vec<Sensor> = self
             .components
             .iter()
             .flatten()
@@ -213,12 +213,11 @@ impl System {
                 (celsius.is_finite() && celsius > 0.0 && celsius < 150.0).then(|| Sensor {
                     name: component.label().to_owned(),
                     celsius,
+                    count: 1,
                 })
             })
             .collect();
-        sensors.sort_by(|a, b| a.name.cmp(&b.name));
-        sensors.truncate(24);
-        sensors
+        told_sensors(sensors)
     }
 
     /// The processes now, with what each did since the look before (`seconds` ago).

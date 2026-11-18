@@ -213,7 +213,8 @@ Each value after it is one **sample**:
             "volumes": [{ "name": "/dev/disk3s5", "mount": "/System/Volumes/Data", "fs": "apfs",
                          "total": 530000000000, "used": 323000000000, "percent": 61.0 }] },
   "load": [1.19, 0.96, 0.8], "uptime": 259200,
-  "sensors": [{ "name": "CPU performance cores", "celsius": 61.5 }],
+  "sensors": [{ "name": "CPU performance cores", "celsius": 61.5, "count": 1 },
+              { "name": "PMU tdie", "celsius": 50.6, "count": 11 }],
   "gpus": [{ "name": "Apple M1 Pro", "load": 44.0, "memoryUsed": 380436480, "memoryTotal": null,
              "celsius": null, "engines": [{ "name": "Renderer", "load": 43.0 }] }] }
 ```
@@ -228,7 +229,9 @@ Each value after it is one **sample**:
 - `mem.breakdown` is what memory is made of, bytes that add up to `total` (`null` where the system
   does not say; `wired` and `compressed` are 0 where there is no such thing, as on Linux).
 - `sensors` are the temperatures, degrees Celsius, while a card's details are open (`card`); empty
-  otherwise, and where the system tells none.
+  otherwise, and where the system tells none. Sensors whose names differ only by an index at the end
+  (`PMU tdie0` to `PMU tdie10`) are one, named what they share, at the hottest of them, `count` how
+  many they are (1 for a sensor alone); by name, at most 24.
 - `gpus` are the graphics processors that say how busy they are, at most 12; **empty where
   `features.gpu` is false.** `load` is 0–100. `memoryUsed` and `memoryTotal` are bytes, `null` where the
   system does not say: `memoryTotal` is also `null` for a GPU that uses the machine's memory (Apple

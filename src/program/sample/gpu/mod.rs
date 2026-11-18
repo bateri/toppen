@@ -83,10 +83,12 @@ mod tests {
             Sensor {
                 name: "CPU die".to_owned(),
                 celsius: 50.0,
+                count: 1,
             },
             Sensor {
                 name: "GPU MTR Temp".to_owned(),
                 celsius: 44.5,
+                count: 1,
             },
         ];
         assert_eq!(celsius_of(&sensors), Some(44.5));

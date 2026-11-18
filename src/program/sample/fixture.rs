@@ -10,7 +10,7 @@ use super::gpu::{Engine, Gpu, celsius_of};
 use super::ports::{Listener, PortSource, Ports, Proto};
 use super::{
     Breakdown, Cpu, Device, Disk, Features, Interface, Machine, Memory, Network, Process, Sample,
-    Sensor, Source, Volume,
+    Sensor, Source, Volume, told_sensors,
 };
 
 const GIB: u64 = 1 << 30;
@@ -547,24 +547,43 @@ impl Source for Fixture {
 
         let sensors = if self.detail {
             let heat = 54.0 + 14.0 * swell + 2.0 * noise(tick + 3);
-            vec![
-                Sensor {
-                    name: "CPU performance cores".to_owned(),
-                    celsius: heat,
-                },
-                Sensor {
-                    name: "CPU efficiency cores".to_owned(),
-                    celsius: heat - 9.0,
-                },
-                Sensor {
-                    name: "GPU".to_owned(),
-                    celsius: 41.0 + 3.0 * noise(tick + 8),
-                },
-                Sensor {
-                    name: "SSD".to_owned(),
-                    celsius: 36.0 + 2.0 * wave(tick, 300, 4),
-                },
-            ]
+            let sensor = |name: &str, celsius: f64| Sensor {
+                name: name.to_owned(),
+                celsius,
+                count: 1,
+            };
+            let mut all = vec![
+                sensor("CPU performance cores", heat),
+                sensor("CPU efficiency cores", heat - 9.0),
+                sensor("GPU", 41.0 + 3.0 * noise(tick + 8)),
+                sensor("SSD", 36.0 + 2.0 * wave(tick, 300, 4)),
+                // And the families a Mac tells, which are told as one each.
+                sensor("NAND CH0 temp", 37.0 + 2.0 * wave(tick, 300, 7)),
+                sensor("PMU tcal", heat - 4.0),
+                sensor("gas gauge battery", 33.0 + noise(tick + 11)),
+            ];
+            for index in 0..=10_u64 {
+                all.push(sensor(
+                    &format!("PMU tdie{index}"),
+                    heat - 6.0 + 2.0 * noise(tick + 20 + index),
+                ));
+            }
+            for index in 1..=8_u64 {
+                all.push(sensor(
+                    &format!("PMU tdev{index}"),
+                    heat - 14.0 + 6.0 * noise(tick + 40 + index),
+                ));
+            }
+            for (index, name) in ["TP0s", "TP1g", "TP1s", "TP2g", "TP2s", "TP3g"]
+                .iter()
+                .enumerate()
+            {
+                all.push(sensor(
+                    &format!("PMU {name}"),
+                    heat - 5.0 + 2.0 * noise(tick + 60 + index as u64),
+                ));
+            }
+            told_sensors(all)
         } else {
             Vec::new()
         };

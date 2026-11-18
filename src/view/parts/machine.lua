@@ -284,16 +284,32 @@ local function cpu_view(inner)
 		box:child(grid)
 	end
 
-	-- The temperatures.
-	box:child(label("Temperatures"))
+	-- The temperatures: a tile for each sensor, as many to a row as fit, not a line each. A family of
+	-- sensors the program told as one (`count`) is at the hottest of them, with how many they are.
+	-- The degrees are coloured as a load is, warm from 70 and hot from 90.
 	local sensors = sample and sample.sensors or {}
 	if #sensors == 0 then
+		box:child(label("Temperatures"))
 		box:child(quiet("None told yet. Where this machine tells none, none will be."))
 	else
+		box:child(label(string.format("Temperatures · %d", #sensors)))
+		local gap = 8
+		local fit = math.max(1, math.floor((inner + gap) / (210 + gap)))
+		local columns = math.ceil(#sensors / math.ceil(#sensors / fit))
+		local tile_w = math.floor((inner - gap * (columns - 1)) / columns)
+		local grid = b.div():row():wrap():gap(gap):w(inner)
 		for _, sensor in sensors do
 			local hot = sensor.celsius
-			box:child(meter_row(sensor.name, math.min(hot / 100, 1), string.format("%.1f °C", hot), inner, 220))
+			local tile = b.div():row():items_center():gap(8):w(tile_w):h(26):px(8):no_shrink():rounded(6):bg("raised1"):clip()
+			tile:child(b.text(sensor.name):color("dim"):text_size(12):truncate():min_w(0))
+			if (sensor.count or 1) > 1 then
+				tile:child(b.text("×" .. sensor.count):color("quiet"):text_size(11):no_shrink())
+			end
+			tile:child(b.spacer())
+			tile:child(b.text(string.format("%.0f °C", hot)):weight(600):color(format.load_role(hot)):no_shrink())
+			grid:child(tile)
 		end
+		box:child(grid)
 	end
 	return box
 end

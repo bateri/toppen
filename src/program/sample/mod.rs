@@ -77,11 +77,71 @@ pub struct Breakdown {
     pub free: u64,
 }
 
-/// A temperature sensor, degrees Celsius.
+/// A temperature sensor, degrees Celsius: or the sensors of a family told as one ([`told_sensors`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sensor {
     pub name: String,
     pub celsius: f64,
+    /// How many sensors it is: 1, or more where a family is told as one, at the hottest of them.
+    pub count: usize,
+}
+
+/// The most sensors a sample tells.
+pub const MOST_SENSORS: usize = 24;
+
+/// The sensors as they are told: those whose names differ only by an index at the end (`PMU tdie0`
+/// to `PMU tdie10`, `PMU TP0s` to `PMU TP3g`, `coretemp Core 0` to `Core 11`) as one, under the name
+/// they share, at the hottest of them and with how many they are; then by name, at most
+/// [`MOST_SENSORS`]. A Mac tells two dozen and more, most of them of a few such families: one by one
+/// they filled the page, and the cap cut away the last of them (the battery's).
+pub fn told_sensors(sensors: Vec<Sensor>) -> Vec<Sensor> {
+    let mut families: std::collections::BTreeMap<String, Sensor> =
+        std::collections::BTreeMap::new();
+    for sensor in sensors {
+        match families.get_mut(family_of(&sensor.name)) {
+            Some(told) => {
+                told.count += sensor.count;
+                told.celsius = told.celsius.max(sensor.celsius);
+            }
+            None => {
+                families.insert(family_of(&sensor.name).to_owned(), sensor);
+            }
+        }
+    }
+    let mut told: Vec<Sensor> = families
+        .into_iter()
+        .map(|(family, mut sensor)| {
+            if sensor.count > 1 {
+                sensor.name = family;
+            }
+            sensor
+        })
+        .collect();
+    told.sort_by(|a, b| a.name.cmp(&b.name));
+    told.truncate(MOST_SENSORS);
+    told
+}
+
+/// The name a sensor shares with the others of its family: its own without the index at its end, a
+/// number with at most one letter after it (`PMU tdie10`, `PMU TP1g`); the whole name where it ends
+/// in no number, or is nothing but one.
+fn family_of(name: &str) -> &str {
+    let bytes = name.as_bytes();
+    let mut end = bytes.len();
+    if end >= 2 && bytes[end - 1].is_ascii_alphabetic() && bytes[end - 2].is_ascii_digit() {
+        end -= 1;
+    }
+    let letters_end = end;
+    while end > 0 && bytes[end - 1].is_ascii_digit() {
+        end -= 1;
+    }
+    // Only ASCII was taken off the end, so `end` is at a character's boundary.
+    let family = name[..end].trim_end();
+    if end == letters_end || family.is_empty() {
+        name
+    } else {
+        family
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -249,6 +309,89 @@ pub fn percent(part: u64, whole: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sensor(name: &str, celsius: f64) -> Sensor {
+        Sensor {
+            name: name.to_owned(),
+            celsius,
+            count: 1,
+        }
+    }
+
+    /// What an M1 Pro told on 2026-11-18, by sysinfo.
+    const A_MAC: [(&str, f64); 28] = [
+        ("NAND CH0 temp", 39.0),
+        ("PMU TP0s", 49.4),
+        ("PMU TP1g", 50.4),
+        ("PMU TP1s", 49.7),
+        ("PMU TP2g", 50.4),
+        ("PMU TP2s", 49.4),
+        ("PMU TP3g", 50.6),
+        ("PMU tcal", 51.9),
+        ("PMU tdev1", 44.7),
+        ("PMU tdev2", 48.1),
+        ("PMU tdev3", 49.6),
+        ("PMU tdev4", 37.1),
+        ("PMU tdev5", 35.8),
+        ("PMU tdev6", 45.0),
+        ("PMU tdev7", 49.5),
+        ("PMU tdev8", 50.5),
+        ("PMU tdie0", 50.1),
+        ("PMU tdie1", 50.5),
+        ("PMU tdie10", 50.2),
+        ("PMU tdie2", 50.2),
+        ("PMU tdie3", 50.4),
+        ("PMU tdie4", 50.6),
+        ("PMU tdie5", 49.7),
+        ("PMU tdie6", 49.8),
+        ("PMU tdie7", 50.3),
+        ("PMU tdie8", 49.9),
+        ("PMU tdie9", 49.8),
+        ("gas gauge battery", 35.6),
+    ];
+
+    #[test]
+    fn a_family_of_sensors_is_told_as_one_at_the_hottest_and_the_battery_is_not_cut_away() {
+        let told = told_sensors(
+            A_MAC
+                .iter()
+                .map(|(name, celsius)| sensor(name, *celsius))
+                .collect(),
+        );
+        let seen: Vec<(&str, f64, usize)> = told
+            .iter()
+            .map(|sensor| (sensor.name.as_str(), sensor.celsius, sensor.count))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                ("NAND CH0 temp", 39.0, 1),
+                ("PMU TP", 50.6, 6),
+                ("PMU tcal", 51.9, 1),
+                ("PMU tdev", 50.5, 8),
+                ("PMU tdie", 50.6, 11),
+                ("gas gauge battery", 35.6, 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sensor_with_no_family_keeps_its_name_and_the_most_told_is_the_cap() {
+        let names = ["CPU performance cores", "GPU", "SSD", "Core 7", "123"];
+        let told = told_sensors(names.iter().map(|name| sensor(name, 40.0)).collect());
+        let mut kept: Vec<&str> = told.iter().map(|sensor| sensor.name.as_str()).collect();
+        kept.sort_unstable();
+        assert_eq!(
+            kept,
+            ["123", "CPU performance cores", "Core 7", "GPU", "SSD"]
+        );
+        assert!(told.iter().all(|sensor| sensor.count == 1));
+        // Thirty sensors of thirty families: the first 24 by name.
+        let many: Vec<Sensor> = (0..30)
+            .map(|at| sensor(&format!("{}x", char::from(b'A' + at)), 40.0))
+            .collect();
+        assert_eq!(told_sensors(many).len(), MOST_SENSORS);
+    }
 
     fn volume(mount: &str, total: u64) -> Volume {
         Volume {

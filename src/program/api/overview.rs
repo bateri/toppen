@@ -106,6 +106,7 @@ struct BreakdownMessage {
 struct SensorMessage<'a> {
     name: &'a str,
     celsius: f64,
+    count: usize,
 }
 
 #[derive(Serialize)]
@@ -266,6 +267,7 @@ fn message(sample: &Sample) -> SampleMessage<'_> {
             .map(|sensor| SensorMessage {
                 name: &sensor.name,
                 celsius: tenth(sensor.celsius),
+                count: sensor.count,
             })
             .collect(),
         gpus: sample

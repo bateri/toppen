@@ -16,6 +16,9 @@
 
 - **The graphs of a card's details are drawn in dots**, as the cards are, and stay sharp at any text
   size. A terminal whose pages cannot draw charts yet shows them smooth, as before.
+- **The temperatures take a row or two, not a line each.** Each is a small tile, and sensors of one
+  family, like a Mac's eleven `PMU tdie`, are one tile at the hottest of them. The battery's
+  temperature, which a Mac's long list used to cut off, is shown again.
 - The mouse pointer is a hand over a button, a tab, a row, a head and a card, and the arrow elsewhere.
 
 ### Fixed
