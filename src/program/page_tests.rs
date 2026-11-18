@@ -1261,8 +1261,12 @@ fn the_ports_are_listed_filtered_and_lead_to_their_process_in_the_table() {
     let (session, mut page) = open_small(WIDE);
     let (port, process) = my_listener(&session);
     page.press("p").expect("the ports are asked for");
-    page.wait_for(WITHIN, |page| said(page).contains(" listening sockets"))
-        .expect("the ports are listed");
+    // The tab says "0 listening sockets" until the program's first list of the ports comes: what is
+    // waited for is the list with its heads, not the line above it.
+    page.wait_for(WITHIN, |page| {
+        said(page).contains(" listening sockets") && page.says("Port") && page.says("Proto")
+    })
+    .expect("the ports are listed");
     assert!(page.says("Port") && page.says("Proto"), "{}", short(&page));
     assert!(said(&page).contains(&port.to_string()), "{}", short(&page));
     // A filter is the program's: a colon and the port leave that one.
