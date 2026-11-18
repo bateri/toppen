@@ -120,7 +120,7 @@ end
 local function plot(name, lines, ceiling, w, h)
 	M.graphs[name] = true
 	local back = back_of(name, w)
-	local body = graph.area(lines, count(), ceiling, w, h, back)
+	local body = graph.area(lines, count(), ceiling, w, h, back, false, name)
 	return b.div():id(name):w(w):h(h):no_shrink():rounded(4):bg("raised1"):clip():child(body), back
 end
 
@@ -278,7 +278,7 @@ local function cpu_view(inner)
 			end
 			local cell = b.div():col():gap(4):w(cell_w):no_shrink():p(6):rounded(6):bg("raised1"):clip()
 			cell:child(head)
-			cell:child(graph.area({ { values = S.cores[index] or {}, role = format.load_role(share) } }, count(), 100, cell_w - 12, 26))
+			cell:child(graph.area({ { values = S.cores[index] or {}, role = format.load_role(share) } }, count(), 100, cell_w - 12, 26, nil, true))
 			grid:child(cell)
 		end
 		box:child(grid)

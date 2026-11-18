@@ -1271,7 +1271,18 @@ fn a_signal_is_asked_for_of_the_process_of_the_row_of_the_ports() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_big_machine_in_a_big_pane_stays_within_the_pages_memory() {
-    let session = session_over(Fixture::large(), TICK);
+    within_the_pages_memory_in_a_big_pane(Fixture::large());
+}
+
+/// The same with two GPUs, whose details draw a graph in dots for each.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_machine_with_two_gpus_in_a_big_pane_stays_within_the_pages_memory() {
+    within_the_pages_memory_in_a_big_pane(Fixture::duo());
+}
+
+fn within_the_pages_memory_in_a_big_pane(fixture: Fixture) {
+    let session = session_over(fixture, TICK);
     let mut page = open(&session, (2560.0, 1400.0), None).expect("the page opens");
     for _ in 0..30 {
         page.advance(0.3).expect("the page keeps drawing");

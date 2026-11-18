@@ -290,7 +290,7 @@ local function history(title, value, series, role, ceiling, inner)
 	head:child(b.spacer())
 	head:child(b.text(value):weight(600):color(role):no_shrink())
 	local box = b.div():col():gap(3):child(head)
-	box:child(b.div():rounded(4):bg("raised1"):clip():child(graph.area({ { values = series, role = role } }, KEPT, ceiling, inner, 44)))
+	box:child(b.div():rounded(4):bg("raised1"):clip():child(graph.area({ { values = series, role = role } }, KEPT, ceiling, inner, 44, nil, false, "detail/" .. title)))
 	return box
 end
 

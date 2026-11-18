@@ -198,4 +198,6 @@ toppen is free software: you can redistribute it and/or modify it under the term
 version 3 of the License, or (at your option) any later version. It is distributed in the hope
 that it will be useful, but WITHOUT ANY WARRANTY; see the license for details.
 
-The icons are [Tabler](https://tabler.io/icons)'s (MIT, `src/assets/icons/LICENSE`).
+The icons are [Tabler](https://tabler.io/icons)'s (MIT, `src/assets/icons/LICENSE`). The dotted look
+of the graphs is inspired by [dither-kit-rs](https://github.com/DeepanshuMishraa/dither-kit-rs); toppen
+draws it with code of its own.

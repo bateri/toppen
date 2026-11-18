@@ -14,6 +14,8 @@
 
 ### Changed
 
+- **The graphs of a card's details are drawn in dots**, as the cards are, and stay sharp at any text
+  size. A terminal whose pages cannot draw charts yet shows them smooth, as before.
 - The mouse pointer is a hand over a button, a tab, a row, a head and a card, and the arrow elsewhere.
 
 ### Fixed

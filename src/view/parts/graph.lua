@@ -3,6 +3,11 @@
 -- height it is laid out at.
 
 local kit = require("../lib/kit")
+local dither = require("../vendor/dither")
+
+-- `@pencere/charts` is the terminal's, not toppen's: a terminal whose kit came before it has none,
+-- and there the graphs are drawn as toppen drew them before it, smooth (`smooth_area`, below).
+local has_charts, charts = pcall(require, "@pencere/charts")
 
 local b = kit.b
 
@@ -33,13 +38,14 @@ function graph.ceiling(lines, count, floor)
 	return top
 end
 
--- An area graph of `lines` (each { values =, role = }), the last `count` samples of them, between 0
--- and `ceiling`, `w` by `h` points. A line shorter than `count` starts from the right. `back` (a
--- whole number of samples from the newest, or nil) marks one moment: a rule down the graph and a dot
--- on each line, where the pointer is.
-function graph.area(lines, count, ceiling, w, h, back)
+-- An area graph is drawn in the dots of `vendor/dither`, a painter of the model of `@pencere/charts`.
+local painter = has_charts and dither or nil
+
+-- An area graph drawn on its own, for a terminal with no `@pencere/charts`: the line, the area under
+-- it and the moment `back` marks, as `charts.smooth` draws them.
+local function smooth_area(lines, count, ceiling, w, h, back)
 	local paths = {}
-	-- Rules at the half and the top, quiet.
+	-- A rule at the half, quiet.
 	for _, fraction in { 0.5 } do
 		local y = math.floor(h * fraction) + 0.5
 		paths[#paths + 1] = b.path():move_to(0, y):line_to(w, y):stroke(1, b.alpha("foreground", 0.07))
@@ -83,6 +89,28 @@ function graph.area(lines, count, ceiling, w, h, back)
 		end
 	end
 	return b.div():w(w):h(h):no_shrink():clip():child(b.canvas(paths):size(w, h))
+end
+
+-- An area graph of `lines` (each { values =, role = }), the last `count` samples of them, between 0
+-- and `ceiling`, `w` by `h` points. A line shorter than `count` starts from the right. `back` (a
+-- whole number of samples from the newest, or nil) marks one moment: a rule down the graph and a dot
+-- on each line, where the pointer is. `plain` draws it smooth whatever the look: a graph of which a
+-- page has dozens (a processor's cores), whose dots together would take more of the page's memory
+-- than it has. `id` names it, so that its drawing is kept while only the pointer moves.
+function graph.area(lines, count, ceiling, w, h, back, plain, id)
+	if not has_charts then
+		return smooth_area(lines, count, ceiling, w, h, back)
+	end
+	return charts.area({
+		id = id,
+		w = w,
+		h = h,
+		count = count,
+		ceiling = ceiling,
+		series = lines,
+		marker = back,
+		painter = plain and charts.smooth or painter,
+	})
 end
 
 -- A dot matrix of `lines` (each { values =, role = }, one or two), the last `count` samples of
