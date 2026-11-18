@@ -13,7 +13,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::terminal::{Start, Terminal, count, plain, sent, shows_page};
+use common::terminal::{Start, Terminal, count, plain, sends, sent, shows_page};
 use common::{Pane, program};
 
 const LIMIT: Duration = Duration::from_secs(60);
@@ -43,8 +43,9 @@ fn start(pane: &Pane, size: (u16, u16), extra: &[(&str, &str)]) -> Terminal {
     })
 }
 
-/// Waits until what the program has written is as `shown` says.
-fn until_shown(terminal: &mut Terminal, shown: impl Fn(&[u8]) -> bool) -> bool {
+/// Waits until what the program has written is as `shown` says: it is asked again each time the program
+/// has written more, with the same stream grown.
+fn until_shown(terminal: &mut Terminal, mut shown: impl FnMut(&[u8]) -> bool) -> bool {
     let end = Instant::now() + LIMIT;
     while Instant::now() < end {
         terminal.settle(Duration::from_millis(100));
@@ -57,8 +58,8 @@ fn until_shown(terminal: &mut Terminal, shown: impl Fn(&[u8]) -> bool) -> bool {
 
 /// Whether the program has sent the window as one picture: the `cols` by `rows` cells of 10 by 20 pixels,
 /// a cell more each way.
-fn the_window(raw: &[u8], (cols, rows): (u16, u16)) -> bool {
-    sent(raw).iter().any(|picture| {
+fn the_window((cols, rows): (u16, u16)) -> impl FnMut(&[u8]) -> bool {
+    sends(move |picture| {
         (picture.width, picture.height) == (u32::from(cols) * 10 + 10, u32::from(rows) * 20 + 20)
     })
 }
@@ -75,7 +76,7 @@ fn a_terminal_that_draws_pictures_gets_the_monitor_drawn_as_a_picture_and_is_the
     // terminal what it draws, and draws the page as one picture of the window.
     let mut terminal = start(&pane, (160, 48), &[]);
     assert!(
-        until_shown(&mut terminal, |raw| the_window(raw, (160, 48))),
+        until_shown(&mut terminal, the_window((160, 48))),
         "{:?}",
         sent(&terminal.raw)
     );
@@ -89,7 +90,7 @@ fn a_terminal_that_draws_pictures_gets_the_monitor_drawn_as_a_picture_and_is_the
     // The first picture may be of the line that stands in for the page while its module starts, which
     // a busy machine takes seconds over: what is pressed on it reaches no page.
     assert!(
-        until_shown(&mut terminal, shows_page),
+        until_shown(&mut terminal, shows_page()),
         "the page never came: the window has the line that stands in for it"
     );
 
@@ -158,7 +159,7 @@ fn a_terminal_that_is_asked_to_draw_it_does_so_at_once_and_the_keys_do_not_end_i
     let started = Instant::now();
     let mut terminal = start(&pane, (100, 30), &[("PENCERE_TUI", "1")]);
     assert!(
-        until_shown(&mut terminal, |raw| the_window(raw, (100, 30))),
+        until_shown(&mut terminal, the_window((100, 30))),
         "{:?}",
         sent(&terminal.raw)
     );
@@ -168,7 +169,7 @@ fn a_terminal_that_is_asked_to_draw_it_does_so_at_once_and_the_keys_do_not_end_i
         started.elapsed()
     );
     assert!(
-        until_shown(&mut terminal, shows_page),
+        until_shown(&mut terminal, shows_page()),
         "the page never came: the window has the line that stands in for it"
     );
     // The keyboard goes to the page: `/` takes it for the filter, what is typed is the filter's, and none
