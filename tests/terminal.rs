@@ -13,7 +13,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::terminal::{Start, Terminal, count, plain, sent};
+use common::terminal::{Start, Terminal, count, plain, sent, shows_page};
 use common::{Pane, program};
 
 const LIMIT: Duration = Duration::from_secs(60);
@@ -85,6 +85,12 @@ fn a_terminal_that_draws_pictures_gets_the_monitor_drawn_as_a_picture_and_is_the
         !plain(&terminal.raw).contains("Processes"),
         "{}",
         plain(&terminal.raw)
+    );
+    // The first picture may be of the line that stands in for the page while its module starts, which
+    // a busy machine takes seconds over: what is pressed on it reaches no page.
+    assert!(
+        until_shown(&mut terminal, shows_page),
+        "the page never came: the window has the line that stands in for it"
     );
 
     // The graphs go on: the samples come, and what changed is written again, in place.
@@ -160,6 +166,10 @@ fn a_terminal_that_is_asked_to_draw_it_does_so_at_once_and_the_keys_do_not_end_i
         started.elapsed() < Duration::from_secs(30),
         "the first frame took {:?}",
         started.elapsed()
+    );
+    assert!(
+        until_shown(&mut terminal, shows_page),
+        "the page never came: the window has the line that stands in for it"
     );
     // The keyboard goes to the page: `/` takes it for the filter, what is typed is the filter's, and none
     // of it is the program's own.

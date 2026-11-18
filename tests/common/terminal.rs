@@ -317,6 +317,159 @@ pub fn sent(raw: &[u8]) -> Vec<Sent> {
     found
 }
 
+/// What `text` says, written in base 64 (the standard alphabet; what is not of it is skipped).
+fn unbase64(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let (mut bits, mut have) = (0_u32, 0_u32);
+    for &c in text {
+        let value = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => continue,
+        };
+        bits = bits << 6 | u32::from(value);
+        have += 6;
+        if have >= 8 {
+            have -= 8;
+            out.push(u8::try_from(bits >> have).unwrap_or(0));
+            bits &= (1 << have) - 1;
+        }
+    }
+    out
+}
+
+/// A picture the program sent, or an edit of one: the row of the window its top is at (a picture is put
+/// where the cursor was moved to just before it, an edit says where it goes), how many pixels across it
+/// is, and its pixels, row after row of RGBA (`f=32`; a terminal that says it takes no packed pixels is
+/// sent them as they are).
+pub struct Piece {
+    pub top: u32,
+    pub width: u32,
+    pub pixels: Vec<u8>,
+}
+
+/// The row of the window, in pixels, the cursor was moved to by what ends `before`: `CSI H` or
+/// `CSI row;1H`, in cells of 20 pixels.
+fn cursor_row(before: &[u8]) -> u32 {
+    let Some(start) = before.iter().rposition(|byte| *byte == 0x1b) else {
+        return 0;
+    };
+    let csi = &before[start..];
+    let Some(inner) = csi
+        .strip_prefix(b"\x1b[")
+        .and_then(|rest| rest.strip_suffix(b"H"))
+    else {
+        return 0;
+    };
+    let row = String::from_utf8_lossy(inner)
+        .split(';')
+        .next()
+        .and_then(|row| row.parse::<u32>().ok())
+        .unwrap_or(1);
+    row.saturating_sub(1) * 20
+}
+
+/// The pictures and edits the program sent, in the order it sent them, whole or in the chunks a large one
+/// comes in.
+pub fn pieces(raw: &[u8]) -> Vec<Piece> {
+    let mut found = Vec::new();
+    let mut open: Option<(u32, u32, Vec<u8>)> = None;
+    let mut at = 0;
+    while at + 3 <= raw.len() {
+        if &raw[at..at + 3] != b"\x1b_G" {
+            at += 1;
+            continue;
+        }
+        let begins = at;
+        let from = at + 3;
+        let mut end = from;
+        while end < raw.len() && !(raw[end] == 0x1b && raw.get(end + 1) == Some(&b'\\')) {
+            end += 1;
+        }
+        let command = &raw[from..end];
+        at = end + 2;
+        let (keys, data) = match command.iter().position(|byte| *byte == b';') {
+            Some(split) => (&command[..split], &command[split + 1..]),
+            None => (command, &command[..0]),
+        };
+        let keys = String::from_utf8_lossy(keys);
+        let has = |name: &str| keys.split(',').any(|pair| pair == name);
+        let value = |name: &str| {
+            keys.split(',')
+                .find_map(|pair| pair.strip_prefix(name)?.strip_prefix('='))
+                .and_then(|number| number.parse::<u32>().ok())
+        };
+        let starts = keys.split(',').any(|pair| pair.starts_with("a="));
+        let more = has("m=1");
+        if starts {
+            open = None;
+            if has("f=32") && !keys.split(',').any(|pair| pair.starts_with("o=")) {
+                let top = if has("a=f") {
+                    value("y").unwrap_or(0)
+                } else {
+                    cursor_row(&raw[..begins])
+                };
+                let width = value("s").unwrap_or(1).max(1);
+                if more {
+                    open = Some((top, width, data.to_vec()));
+                } else {
+                    found.push(Piece {
+                        top,
+                        width,
+                        pixels: unbase64(data),
+                    });
+                }
+            }
+        } else if let Some((top, width, mut so_far)) = open.take() {
+            so_far.extend_from_slice(data);
+            if more {
+                open = Some((top, width, so_far));
+            } else {
+                found.push(Piece {
+                    top,
+                    width,
+                    pixels: unbase64(&so_far),
+                });
+            }
+        }
+    }
+    found
+}
+
+/// Whether the window has the page in it, and not only the line that stands in for the page until its
+/// module has handed out the first ("Starting the page…"). A busy machine takes seconds over that and
+/// writes nothing meanwhile, and what is typed or pressed on the line reaches no page. The line is a few
+/// words in the middle of the window, on the ground (the colour of the first picture's corner); every page
+/// draws above or below them.
+pub fn shows_page(raw: &[u8]) -> bool {
+    let pieces = pieces(raw);
+    let Some(window) = pieces
+        .iter()
+        .find(|piece| piece.top == 0 && piece.width >= 200)
+    else {
+        return false;
+    };
+    let Some(&ground) = window.pixels.as_chunks::<4>().0.first() else {
+        return false;
+    };
+    let middle = u32::try_from(window.pixels.len() / 4).unwrap_or(0) / window.width / 2;
+    pieces.iter().any(|piece| {
+        piece
+            .pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .any(|(n, pixel)| {
+                let y = piece.top + u32::try_from(n).unwrap_or(0) / piece.width;
+                y.abs_diff(middle) > 3 * 20 && pixel[3] != 0 && *pixel != ground
+            })
+    })
+}
+
 /// `raw` as the text a screen would hold, the escape sequences (CSI, OSC and the pictures' APC) taken out.
 pub fn plain(raw: &[u8]) -> String {
     let mut out = Vec::with_capacity(raw.len());
