@@ -1360,3 +1360,141 @@ fn within_the_pages_memory_in_a_big_pane(fixture: Fixture) {
     assert!(page.says("Name"), "{}", short(&page));
     drop(session);
 }
+
+// --- What a screen reader is told ----------------------------------------------------------------------
+
+/// What `bateri view` reads of the element named `name`: its role, its words and where it stands.
+fn heard(page: &Page, name: &str) -> pencere_view::Accessible {
+    let id = pencere_view::Id::named(name);
+    page.laid()
+        .expect("the page is laid out")
+        .accessible()
+        .into_iter()
+        .find(|item| item.id == Some(id))
+        .unwrap_or_else(|| panic!("a screen reader is told nothing of {name}"))
+}
+
+/// What the page says of every element whose words start with `label`, as the kit holds it (its
+/// role and where it stands, as `Debug` writes them), for what the kit's reading does not tell apart:
+/// the cells of a row of the table are said with the row (`Row 3`), and what is in them is in the
+/// page's tree and not in what is read. Each is the part of the element's meta from its role to the
+/// end of its state.
+fn told_of(page: &Page, label: &str) -> Vec<String> {
+    let dump = format!("{:?}", page.root().expect("the page has a tree"));
+    let needle = format!("label: Some(\"{label}");
+    let mut found = Vec::new();
+    let mut from = 0;
+    while let Some(at) = dump[from..].find(&needle) {
+        let at = from + at;
+        from = at + needle.len();
+        let Some(role) = dump[at..].find("role: ") else {
+            continue;
+        };
+        let start = at + role;
+        let Some(end) = dump[start..].find(", commands:") else {
+            continue;
+        };
+        // The label itself is the first thing of what is kept, to be told which it was.
+        let words = &dump[at..start];
+        found.push(format!("{}{}", words, &dump[start..start + end]));
+    }
+    found
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_card_that_is_open_is_expanded_to_a_screen_reader_and_not_by_its_border_alone() {
+    let (_session, mut page) = open_small(WIDE);
+    for card in ["cpu", "memory", "network", "disk"] {
+        let said = heard(&page, &format!("card/{card}"));
+        assert_eq!(
+            said.state.expanded,
+            Some(false),
+            "{card} is shut at the start"
+        );
+    }
+    page.press("2").expect("the memory is asked for");
+    page.wait_for(WITHIN, |page| page.says("What it is made of"))
+        .expect("the memory is drawn at length");
+    assert_eq!(heard(&page, "card/memory").state.expanded, Some(true));
+    assert_eq!(heard(&page, "card/cpu").state.expanded, Some(false));
+    page.press("escape").expect("escape goes back");
+    page.wait_for(WITHIN, |page| !page.says("What it is made of"))
+        .expect("the table is back");
+    assert_eq!(heard(&page, "card/memory").state.expanded, Some(false));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_gauge_of_the_card_that_is_open_is_expanded_in_a_narrow_pane_too() {
+    let (_session, mut page) = open_small(PANE);
+    // A line each (GAUGE is 20 points), not the cards of a wide page.
+    assert!(
+        heard(&page, "card/cpu").rect.h <= 20.5,
+        "{:?}",
+        heard(&page, "card/cpu").rect
+    );
+    assert_eq!(heard(&page, "card/cpu").state.expanded, Some(false));
+    assert_eq!(heard(&page, "card/memory").state.expanded, Some(false));
+    page.press("1").expect("the CPU is asked for");
+    page.wait_for(WITHIN, |page| page.says("Processor use"))
+        .expect("the CPU is drawn at length");
+    assert_eq!(heard(&page, "card/cpu").state.expanded, Some(true));
+    assert_eq!(heard(&page, "card/memory").state.expanded, Some(false));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_interface_that_is_chosen_is_chosen_to_a_screen_reader_and_not_by_its_fill_alone() {
+    let (_session, mut page) = open_small(WIDE);
+    page.press("3").expect("the network is asked for");
+    wait_for_said(&mut page, "bridge100");
+    assert!(
+        heard(&page, "iface/").state.selected,
+        "all of them, at the start"
+    );
+    page.click("iface/en5").expect("an interface is pressed");
+    page.advance(0.3).expect("the page settles");
+    assert!(heard(&page, "iface/en5").state.selected);
+    assert!(
+        !heard(&page, "iface/").state.selected,
+        "and not all of them"
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_branch_says_whether_it_is_open_and_a_marked_process_says_so() {
+    let (_session, mut page) = open_small(WIDE);
+    assert!(
+        told_of(&page, "Marked").is_empty(),
+        "nothing is marked at the start"
+    );
+    page.press("m")
+        .expect("the process under the cursor is marked");
+    page.advance(0.3).expect("the page settles");
+    let marks = told_of(&page, "Marked");
+    assert_eq!(marks.len(), 1, "{marks:?}");
+    assert!(marks[0].contains("role: Some(Checkbox)"), "{marks:?}");
+    assert!(marks[0].contains("checked: Some(true)"), "{marks:?}");
+    page.press("m").expect("and unmarked");
+    page.advance(0.3).expect("the page settles");
+    assert!(told_of(&page, "Marked").is_empty(), "the mark is gone");
+    // In the tree each branch has a button that folds it, and says whether it is open.
+    page.press("t").expect("t is pressed");
+    page.advance(0.5).expect("the page settles");
+    let open = told_of(&page, "Fold ");
+    assert!(!open.is_empty(), "branches that are open");
+    assert!(
+        open.iter().all(|one| one.contains("expanded: Some(true)")),
+        "{open:?}"
+    );
+    page.command("fold_all").expect("every branch is folded");
+    page.advance(0.5).expect("the page settles");
+    let shut = told_of(&page, "Open ");
+    assert!(!shut.is_empty(), "branches that are shut");
+    assert!(
+        shut.iter().all(|one| one.contains("expanded: Some(false)")),
+        "{shut:?}"
+    );
+}

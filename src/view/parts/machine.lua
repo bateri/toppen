@@ -449,7 +449,7 @@ local function net_row(name, rx, tx, chosen, w)
 	local id = "iface/" .. name
 	local over = u:hovered(id)
 	local row = b.div():row():items_center():gap(8):h(40):w(w):no_shrink():px(8):rounded(6)
-		:press(id):role("button"):label(name == "" and "All interfaces" or name)
+		:press(id):role("button"):label(name == "" and "All interfaces" or name):selected(chosen)
 		:bg(chosen and b.alpha("accent", 0.2) or (over and b.alpha("foreground", 0.07) or nil))
 	row:child(b.text(name == "" and "All interfaces" or name):weight(chosen and 650 or 400):truncate():min_w(0):grow(1))
 	local rates = b.div():col():items_end():no_shrink()

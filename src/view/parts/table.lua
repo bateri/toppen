@@ -378,7 +378,7 @@ local function name_cell(row)
 		end
 		if row.children > 0 then
 			box:child(b.div():press(toggle_name(row)):role("button")
-				:label((row.folded and "Open " or "Fold ") .. row.name)
+				:label((row.folded and "Open " or "Fold ") .. row.name):expanded(not row.folded)
 				:w(16):h(ROW - 4):no_shrink():items_center():justify_center():rounded(3)
 				:child(kit.icon(row.folded and "chevron-right" or "chevron-down", 13, "dim")))
 		else
@@ -386,7 +386,8 @@ local function name_cell(row)
 		end
 	end
 	if not row.group and S.marks[row.pid] then
-		box:child(b.div():w(7):h(7):rounded(4):bg("accent"):mr(4):no_shrink())
+		-- Marked, to a screen reader as well as by the dot: the dot says it to the eye alone.
+		box:child(b.div():w(7):h(7):rounded(4):bg("accent"):mr(4):no_shrink():role("checkbox"):checked(true):label("Marked"))
 	end
 	box:child(marked(row.name, row.hits and row.hits.name, base, 600))
 	if row.children > 0 and (row.group or row.folded) then

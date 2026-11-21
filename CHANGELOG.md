@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A screen reader, and an agent that reads the pane, are told which card is open, which interface the
+  network is of, which processes are marked and whether a branch of the tree is open. The cards and the
+  interface were told by colour and fill alone, and a mark by a dot.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added
