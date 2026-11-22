@@ -342,24 +342,25 @@ local function marked(words, ranges, base, weight)
 		end
 		return text
 	end
-	local line = b.div():row():items_center():min_w(0):clip()
+	-- One text with a span for each piece, so that it is read as the words it is (a box for each piece was
+	-- read as pieces: "bater" "i" "-browser").
+	local spans = {}
 	local at = 1
 	for _, range in ranges do
 		local from = utf8.offset(words, range[1] + 1)
 		local to = utf8.offset(words, range[2] + 1)
 		if from ~= nil and to ~= nil and from >= at and to > from then
 			if from > at then
-				line:child(b.text(string.sub(words, at, from - 1)):color(base):no_shrink())
+				spans[#spans + 1] = b.span(string.sub(words, at, from - 1)):color(base)
 			end
-			line:child(b.div():bg(b.alpha("accent", 0.32)):rounded(2)
-				:child(b.text(string.sub(words, from, to - 1)):color("foreground"):no_shrink()))
+			spans[#spans + 1] = b.span(string.sub(words, from, to - 1)):color("foreground"):bg(b.alpha("accent", 0.32))
 			at = to
 		end
 	end
 	if at <= #words then
-		line:child(b.text(string.sub(words, at)):color(base):no_shrink())
+		spans[#spans + 1] = b.span(string.sub(words, at)):color(base)
 	end
-	return line
+	return b.rich(spans):truncate():min_w(0)
 end
 
 local function toggle_name(row)

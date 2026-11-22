@@ -1,0 +1,109 @@
+focus: page
+items:
+50ermg  button "Show the details of CPU" [collapsed, value "25 %"]
+9d89kj  button "Show the details of Memory" [collapsed, value "10.2 GiB"]
+1wdetr  button "Show the details of Network" [collapsed, value "1.3 MiB/s"]
+stcy2f  button "Show the details of Disk" [collapsed, value "193 GiB"]
+4mgc2s  button "Show the details of GPU" [collapsed, value "44 %"]
+zr87hx  radio "Processes" [checked, 1 of 2]
+c3d5xj  radio "Ports" [unchecked, 2 of 2]
+        text "54 processes"
+zd8rrr  radio "Flat" [checked, 1 of 3]
+j0chh9  radio "Tree" [unchecked, 2 of 3]
+2t33y4  radio "Group" [unchecked, 3 of 3]
+s99cpe  table "Table" [rows 54, columns 9]
+          row "Header"
+z1r49s      columnheader "Name" [column 1]
+kq74nj        slider "Name column width" [value "240 pt"]
+rc7qn7      columnheader "PID" [column 2]
+1f9spz        slider "PID column width" [value "72 pt"]
+q6h7nk      columnheader "User" [column 3]
+p6c9er        slider "User column width" [value "100 pt"]
+xt8r9x      columnheader "CPU" [column 4, sorted descending]
+jcp54k        slider "CPU column width" [value "84 pt"]
+gxae7r      columnheader "Memory" [column 5]
+gdw0e9        slider "Memory column width" [value "96 pt"]
+ss2z7v      columnheader "Threads" [column 6]
+3g93s4        slider "Threads column width" [value "78 pt"]
+t4x8hq      columnheader "State" [column 7]
+ta382f        slider "State column width" [value "80 pt"]
+zt6ew2      columnheader "Time" [column 8]
+spyv2b        slider "Time column width" [value "92 pt"]
+d07xsz      columnheader "Command" [column 9]
+39w60k        slider "Command column width" [value "232 pt"]
+0pghy4    row "postgres 324 postgres 128.4% 851 MiB 23 running 13:54.87 /usr/local/bin/postgres --serve --port 3032 --config /etc/postgres/32.toml" [selected, row 1]
+tacqz0    row "redis-server 296 lantern 116.9% 403 MiB 24 running 7:40.36 /usr/local/bin/redis-server --serve --port 3028 --config /etc/redis-server/28.toml" [row 2]
+dccg4s    row "redis-server 429 postgres 115.9% 192 MiB 13 running 2:49.15 /usr/local/bin/redis-server --serve --port 3047 --config /etc/redis-server/47.toml" [row 3]
+6ax525    row "cargo 345 root 104.3% 146 MiB 22 running 17:55.83 /usr/local/bin/cargo --serve --port 3035 --config /etc/cargo/35.toml" [row 4]
+re4k44    row "redis-server 121 lantern 75.7% 826 MiB 23 running 2:40.75 /usr/local/bin/redis-server --serve --port 3003 --config /etc/redis-server/3.toml" [row 5]
+5ggq63    row "Code Helper 457 www 68.8% 39 MiB 19 running 7:52.27 /usr/local/bin/Code Helper --serve --port 3051 --config /etc/Code Helper/51.toml" [row 6]
+gy8dv3    row "Code Helper 142 postgres 66.4% 527 MiB 6 running 6:59.86 /usr/local/bin/Code Helper --serve --port 3006 --config /etc/Code Helper/6.toml" [row 7]
+fj777p    row "sleep 331 root 64.6% 306 MiB 11 running 14:07.44 /usr/local/bin/sleep --serve --port 3033 --config /etc/sleep/33.toml" [row 8]
+59b9sm    row "java 261 root 62.5% 570 MiB 4 running 15:45.01 /usr/local/bin/java --serve --port 3023 --config /etc/java/23.toml" [row 9]
+z6v28y    row "Code Helper 310 lantern 55.2% 39 MiB 15 running 9:26.54 /usr/local/bin/Code Helper --serve --port 3030 --config /etc/Code Helper/30.toml" [row 10]
+h1pdav    row "kworker 149 root 53.6% 393 MiB 17 running 8:14.12 /usr/local/bin/kworker --serve --port 3007 --config /etc/kworker/7.toml" [row 11]
+p57ygq    row "postgres 275 www 52.0% 589 MiB 6 running 1:52.92 /usr/local/bin/postgres --serve --port 3025 --config /etc/postgres/25.toml" [row 12]
+bfqgks    row "tmux 184 lantern 50.9% 6.6 MiB 20 running 15:40.50 /usr/local/bin/tmux --serve --port 3012 --config /etc/tmux/12.toml" [row 13]
+kjr9vx    row "kworker 359 lantern 45.0% 830 MiB 6 running 3:03.24 /usr/local/bin/kworker --serve --port 3037 --config /etc/kworker/37.toml" [row 14]
+9q2azc    row "postgres 170 lantern 44.5% 458 MiB 23 running 12:33.24 /usr/local/bin/postgres --serve --port 3010 --config /etc/postgres/10.toml" [row 15]
+7k6es2    row "python3 317 www 43.1% 107 MiB 21 running 10:42.02 /usr/local/bin/python3 --serve --port 3031 --config /etc/python3/31.toml" [row 16]
+597sv2    row "rustc 499 lantern 34.1% 52 MiB 12 sleeping 16:11.13 /usr/local/bin/rustc --serve --port 3057 --config /etc/rustc/57.toml" [row 17]
+        text "lantern"
+        text "Fixture OS 1.0"
+        text "up 3d 0h"
+        text "load 1.19 0.96 0.80"
+1434df  button "every 3600 s" [description "Update interval · click to change · + and − step it"]
+dh38v6  button "filter" [description "Filter the processes"]
+b2gqrr  button "palette" [description "Find a command or a process"]
+c9zsn1  button "help" [description "Show the keys and the commands"]
+e0xzc5  button "pause" [description "Pause updates"]
+fields:
+dxc3be  field "Filter processes"
+scrolls:
+4224zc  scroll 0% (at the top)
+commands:
+  "Pause or resume updates" [space]
+  "Look at the machine more often" [+, =]
+  "Look at the machine less often" [-]
+  "Filter processes" [/, f4]
+  "Show the process tree" [t, f5]
+  "Group processes by name" [g]
+  "Fold or open the branch" [f]
+  "Fold every branch" [[]
+  "Open every branch" []]
+  "Sort by the next column" [>, f6]
+  "Sort by the previous column" [<]
+  "Reverse the order" [r]
+  "Mark or unmark the process" [m]
+  "Only this process and its children" [o]
+  "Show only the processes of this user"
+  "Show only the processes of this name"
+  "Show the details of CPU" [1]
+  "Show the details of Memory" [2]
+  "Show the details of Network" [3]
+  "Show the details of Disk" [4]
+  "Show the details of GPU" [5]
+  "Change how long the graphs look back" [w]
+  "Show or hide the listening ports" [p]
+  "Show the process of the socket in the table" (disabled)
+  "Copy the address of the socket" [a] (disabled)
+  "Copy the port of the socket" (disabled)
+  "Show or hide the details of the process" [i]
+  "Open the menu of the process" [.]
+  "Send a signal to the process" [k, f9]
+  "Change the priority of the process" [n, f7]
+  "Open a shell in the folder of the process" [s]
+  "Copy the command line" [c]
+  "Copy the process id"
+  "Copy the working folder"
+  "Find a command or a process" [cmd+k, ctrl+k]
+  "Show the keys" [?, f1]
+  "Open the settings" [cmd+,, f2]
+  "End it (TERM)"
+  "Interrupt it (INT)"
+  "Hang it up (HUP)"
+  "Kill it (KILL)"
+  "Stop it (STOP)"
+  "Continue it (CONT)"
+  "Send USR1"
+  "Send USR2"

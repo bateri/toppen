@@ -7,6 +7,8 @@
 - A screen reader, and an agent that reads the pane, are told which card is open, which interface the
   network is of, which processes are marked and whether a branch of the tree is open. The cards and the
   interface were told by colour and fill alone, and a mark by a dot.
+  A card says its value after its name, and a word the filter found is read as one word with the rest of the
+  line (it was read in pieces: "bater i-browser"), the found part drawn as a highlight inside the text.
 
 ## [0.3.0] - 2026-11-18
 

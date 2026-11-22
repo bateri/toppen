@@ -1,0 +1,71 @@
+focus: field k7wf7y
+rest: motion
+note: behind the modal in front, 59 items of the page, not read
+items:
+xtdnja  dialog "Command palette" [action "Close"]
+hnjh0a    listbox "List"
+qe9vkj      option "Pause or resume updates" [selected, 1 of 42]
+4epy6p      option "Look at the machine more often" [2 of 42]
+x9cc6f      option "Look at the machine less often" [3 of 42]
+393xqc      option "Filter processes" [4 of 42]
+cg79rd      option "Show the process tree" [5 of 42]
+ebazwd      option "Group processes by name" [6 of 42]
+pp5bwv      option "Fold or open the branch" [7 of 42]
+t6dze3      option "Fold every branch" [8 of 42]
+vsy74t      option "Open every branch" [9 of 42]
+m10138      option "Sort by the next column" [10 of 42]
+8bfxbw      option "Sort by the previous column" [11 of 42]
+          text "Enter"
+          text "Do it"
+          text "Esc"
+          text "Close"
+fields:
+k7wf7y  field "Command palette"
+scrolls:
+hnjh0a  scroll 0% (at the top)
+commands:
+  "Pause or resume updates" [space] (disabled)
+  "Look at the machine more often" [+, =] (disabled)
+  "Look at the machine less often" [-] (disabled)
+  "Filter processes" [/, f4] (disabled)
+  "Show the process tree" [t, f5] (disabled)
+  "Group processes by name" [g] (disabled)
+  "Fold or open the branch" [f] (disabled)
+  "Fold every branch" [[] (disabled)
+  "Open every branch" []] (disabled)
+  "Sort by the next column" [>, f6] (disabled)
+  "Sort by the previous column" [<] (disabled)
+  "Reverse the order" [r] (disabled)
+  "Mark or unmark the process" [m] (disabled)
+  "Only this process and its children" [o] (disabled)
+  "Show only the processes of this user" (disabled)
+  "Show only the processes of this name" (disabled)
+  "Show the details of CPU" [1] (disabled)
+  "Show the details of Memory" [2] (disabled)
+  "Show the details of Network" [3] (disabled)
+  "Show the details of Disk" [4] (disabled)
+  "Show the details of GPU" [5] (disabled)
+  "Change how long the graphs look back" [w] (disabled)
+  "Show or hide the listening ports" [p] (disabled)
+  "Show the process of the socket in the table" (disabled)
+  "Copy the address of the socket" [a] (disabled)
+  "Copy the port of the socket" (disabled)
+  "Show or hide the details of the process" [i] (disabled)
+  "Open the menu of the process" [.] (disabled)
+  "Send a signal to the process" [k, f9] (disabled)
+  "Change the priority of the process" [n, f7] (disabled)
+  "Open a shell in the folder of the process" [s] (disabled)
+  "Copy the command line" [c] (disabled)
+  "Copy the process id" (disabled)
+  "Copy the working folder" (disabled)
+  "Find a command or a process" [cmd+k, ctrl+k] (disabled)
+  "Show the keys" [?, f1] (disabled)
+  "Open the settings" [cmd+,, f2] (disabled)
+  "End it (TERM)" (disabled)
+  "Interrupt it (INT)" (disabled)
+  "Hang it up (HUP)" (disabled)
+  "Kill it (KILL)" (disabled)
+  "Stop it (STOP)" (disabled)
+  "Continue it (CONT)" (disabled)
+  "Send USR1" (disabled)
+  "Send USR2" (disabled)

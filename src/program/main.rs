@@ -22,6 +22,8 @@ mod command_line;
 mod icons;
 mod model;
 #[cfg(test)]
+mod page_reading;
+#[cfg(test)]
 mod page_shots;
 #[cfg(test)]
 mod page_tests;

@@ -122,6 +122,12 @@ local function card(spec, w, h)
 		:press(name):role("button"):label("Show the details of " .. spec.title):expanded(open)
 		:border(1, b.alpha(role, open and 0.9 or (over and 0.5 or 0)))
 		:motion({ seconds = 0.12, color = true })
+	-- What the card shows now, read after what it opens: "12.3 %", "10.2 GiB".
+	local shown = tostring(spec.number)
+	if spec.unit ~= nil and spec.unit ~= "" then
+		shown ..= " " .. spec.unit
+	end
+	box:value(shown)
 	local head = b.div():row():items_center():gap(8):h(HEAD):no_shrink()
 		:child(b.text(spec.title):weight(650):color(role):no_shrink())
 	local used = 2 * PAD
