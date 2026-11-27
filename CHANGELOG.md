@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-27
+
 ### Changed
 
 - **toppen sends much less over the connection.** It told the whole process table again every second
