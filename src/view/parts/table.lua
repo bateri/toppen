@@ -55,6 +55,9 @@ local T = {
 	-- The index (from 0) of rows[1] among all the rows, and the rows told.
 	first = 0,
 	rows = {},
+	-- The number of the message the rows are of, and whether the rows were asked for whole.
+	seq = 0,
+	again = false,
 	-- The row the cursor is on, as the program names it: { pid =, start = } or { group = }.
 	selected = nil,
 	-- The columns drawn last, and the ones the person hid.
@@ -207,10 +210,63 @@ end
 
 -- --- What the program told ---------------------------------------------------------------------------------
 
+-- The rows of a message. A number is the row at that place (from 0) of the message before (`base`),
+-- as it was; an object with `at` is that row with the members that changed; any other object is a row
+-- whole. Nil where the page does not hold that message, or a row of it.
+local function rows_of(told)
+	if told.base == nil then
+		return told.rows
+	end
+	if told.base ~= T.seq then
+		return nil
+	end
+	local rows = {}
+	for place, row in told.rows do
+		if type(row) == "number" then
+			local before = T.rows[row + 1]
+			if before == nil then
+				return nil
+			end
+			rows[place] = before
+		elseif row.at ~= nil then
+			local before = T.rows[row.at + 1]
+			if before == nil then
+				return nil
+			end
+			-- A copy by hand: a decoded object's metatable is the kit's and is not copied.
+			local now = {}
+			for key, value in before do
+				now[key] = value
+			end
+			for key, value in row do
+				if key ~= "at" then
+					now[key] = value
+				end
+			end
+			rows[place] = now
+		else
+			rows[place] = row
+		end
+	end
+	return rows
+end
+
 function tab.told(told)
+	local rows = rows_of(told)
+	if rows == nil then
+		-- A message the page cannot read against what it holds: the program is asked for the rows whole,
+		-- once until they come.
+		if not T.again then
+			T.again = true
+			set({ again = true })
+		end
+		return
+	end
+	T.again = false
+	T.seq = told.seq
 	T.got = true
 	T.total, T.matched, T.visible = told.total, told.matched, told.visible
-	T.moved, T.held, T.first, T.rows = told.moved, told.held, told.first, told.rows
+	T.moved, T.held, T.first, T.rows = told.moved, told.held, told.first, rows
 	T.view = told.view
 	G.sort = { column = told.view.sort, descending = told.view.descending }
 	-- A row the cursor went to before its words came (keys sent faster than rows are fetched) is
@@ -250,16 +306,16 @@ function tab.told(told)
 			end
 		end
 	end
-	if G.cursor == nil and T.selected == nil and told.first == 0 and told.rows[1] ~= nil then
+	if G.cursor == nil and T.selected == nil and told.first == 0 and rows[1] ~= nil then
 		-- The grid takes any key as a step to its first cell while it has no cursor: it starts on the
 		-- first row, as every list does.
 		G.cursor = { row = 1, column = 1 }
-		T.selected = ref(told.rows[1])
+		T.selected = ref(rows[1])
 		set({ selected = T.selected })
 		-- The settings ask for the panel of a process to be open from the start.
 		if S.details_at_start and act.detail_open ~= nil then
 			S.details_at_start = false
-			act.detail_open(told.rows[1])
+			act.detail_open(rows[1])
 		end
 	end
 	if not T.focused then

@@ -115,6 +115,8 @@ Answers the view as it now is. The topic `processes` tells the rows again, in th
   where it is. `null` selects nothing.
 - `toggle` folds an open row or opens a folded one, once: a branch of the tree, or a group.
   `fold` is `all` or `none`, once: fold every branch (every group) or open every one.
+- `again: true` says the page does not hold the rows it was told (it could not read a message
+  against them): the next message of `processes` tells every row whole.
 
 A process is named by its `pid` and `start` (seconds since the epoch): a pid is used again after its
 process ends.
@@ -249,18 +251,25 @@ state is `view`'s, and each message carries it.
 ```json
 { "kind": "processes", "at": 1761868920.5,
   "total": 612, "matched": 41, "visible": 41, "moved": 0, "held": false,
-  "first": 0, "selectedIndex": 3,
+  "first": 0, "selectedIndex": 3, "seq": 8, "base": 7,
   "rows": [{ "pid": 4120, "start": 1761865000, "ppid": 412, "group": false,
              "name": "Google Chrome", "user": "lantern",
              "command": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
              "cpu": 12.5, "mem": 838860800, "virt": 4398046511104, "threads": 41, "state": "S",
              "nice": 0, "time": 1032.4, "read": 0, "write": 4096,
              "depth": 1, "children": 0, "folded": false,
-             "hits": { "name": [[7, 13]], "command": [[44, 50]] } }],
+             "hits": { "name": [[7, 13]], "command": [[44, 50]] } },
+           3, { "at": 4, "cpu": 0.4, "time": 81.25 }],
   "view": { "sort": "cpu", "descending": true, "mode": "flat", "filter": "chrome", "hold": false,
             "root": null, "error": null } }
 ```
 
+- A row the page holds from the message before is told again by its place in that message's `rows`
+  (from 0): the bare number where nothing of it changed, else `at` (the place) and the members whose
+  values are not those of that message (`exited: false` and `hits: {}` where those went). Every
+  other row is whole. `seq` numbers the messages from 1; `base` is the `seq` of the message the
+  places are of, and is not there where every row is whole. A page that does not hold that message
+  asks `view` `again`.
 - `total` is every process; `matched` those the filter lets through (below the `root`, where there is
   one); `visible` the rows of the list, which in a tree or in groups are fewer or more than
   `matched`. `first` is the index of `rows[0]` among the `visible` rows.

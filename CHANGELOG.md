@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **toppen sends much less over the connection.** It told the whole process table again every second
+  and at every move of the cursor; now a row that did not change is told by its place, and one that did
+  by what changed.
+
 ### Fixed
 
 - A screen reader, and an agent that reads the pane, are told which card is open, which interface the

@@ -3,7 +3,12 @@
 //! around them) with each sample, and again with each change of the view.
 //!
 //! The page never holds the table. This is api/'s: `model/` and `sample/` do not know the page.
+//!
+//! The page holds the rows of the last message, and no more: a row it holds is told again by its
+//! place in that message and what changed of it, so that a sample in which little changed, or a move
+//! of the cursor, costs the wire a few bytes a row and not the row's words again.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
@@ -87,6 +92,8 @@ struct ViewParams {
     selected: Option<Option<Ref>>,
     toggle: Option<Ref>,
     fold: Option<String>,
+    /// The page does not hold what it was told: the next message tells the rows whole.
+    again: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -173,6 +180,9 @@ fn change_of(params: ViewParams) -> Result<Change, Failure> {
 }
 
 fn view(session: &Session, params: ViewParams) -> Result<ViewMessage, Failure> {
+    if params.again == Some(true) {
+        session.retell();
+    }
     let change = change_of(params)?;
     let echo = {
         let mut table = session.table();
@@ -265,7 +275,7 @@ fn row_message(row: &Row) -> RowMessage<'_> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Message<'a> {
+struct Message {
     kind: &'static str,
     at: f64,
     total: usize,
@@ -274,15 +284,85 @@ struct Message<'a> {
     moved: usize,
     held: bool,
     first: usize,
-    rows: Vec<RowMessage<'a>>,
+    /// This message's number, counted from 1 along the subscription.
+    seq: u64,
+    /// The message whose rows the rows told by their place are; none where every row is whole.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base: Option<u64>,
+    rows: Vec<Value>,
     selected_index: Option<usize>,
     view: ViewMessage,
 }
 
+/// The members a row has where its message leaves them out, so that a row told again says when one
+/// goes: it did not end, it holds no hits.
+fn whole(row: &RowMessage<'_>) -> Option<serde_json::Map<String, Value>> {
+    let Value::Object(mut members) = serde_json::to_value(row).ok()? else {
+        return None;
+    };
+    members.entry("exited").or_insert(Value::Bool(false));
+    members
+        .entry("hits")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    Some(members)
+}
+
+/// The rows of the last message the page was sent, by the row: where each stood in it, and what it
+/// was, whole. A row told again is compared with it.
+#[derive(Default)]
+pub(crate) struct Told {
+    /// The number of that message; 0 before the first.
+    seq: u64,
+    rows: HashMap<Id, (usize, serde_json::Map<String, Value>)>,
+}
+
+/// `now`, which the page holds as the row at `place` of the last message, as it is told again: the
+/// bare place where nothing changed, else the place (`at`) and the members that changed.
+fn told_again(
+    place: usize,
+    now: &serde_json::Map<String, Value>,
+    before: &serde_json::Map<String, Value>,
+) -> Value {
+    let mut members = serde_json::Map::new();
+    for (key, value) in now {
+        if before.get(key) != Some(value) {
+            members.insert(key.clone(), value.clone());
+        }
+    }
+    if members.is_empty() {
+        return Value::from(place);
+    }
+    members.insert("at".to_owned(), Value::from(place));
+    Value::Object(members)
+}
+
+/// A row as a full message has it: the members left out where they say nothing.
+fn told_whole(row: &RowMessage<'_>) -> Option<Value> {
+    serde_json::to_value(row).ok()
+}
+
 /// The message for `snapshot` of the sample at `at`, with as many of its rows as fit a message
-/// (the newest rows the window asked for come first; a page that misses some asks again).
-fn message(snapshot: &Snapshot, view: &View, at: f64) -> Option<Value> {
-    let mut count = snapshot.rows.len();
+/// (the newest rows the window asked for come first; a page that misses some asks again), and what
+/// the page holds once it has it. A row the page holds from `told` is told by its place there.
+fn message(snapshot: &Snapshot, view: &View, at: f64, told: &Told) -> Option<(Value, Told)> {
+    let messages: Vec<RowMessage<'_>> = snapshot.rows.iter().map(row_message).collect();
+    let wholes: Vec<serde_json::Map<String, Value>> =
+        messages.iter().map(whole).collect::<Option<_>>()?;
+    let rows: Vec<Value> = messages
+        .iter()
+        .zip(&wholes)
+        .zip(&snapshot.rows)
+        .map(|((message, now), row)| match told.rows.get(&row.id) {
+            Some((place, before)) => Some(told_again(*place, now, before)),
+            None => told_whole(message),
+        })
+        .collect::<Option<_>>()?;
+    let based = snapshot
+        .rows
+        .iter()
+        .any(|row| told.rows.contains_key(&row.id));
+    let seq = told.seq + 1;
+    let mut count = rows.len();
     loop {
         let found = Message {
             kind: "processes",
@@ -293,13 +373,24 @@ fn message(snapshot: &Snapshot, view: &View, at: f64) -> Option<Value> {
             moved: snapshot.moved,
             held: snapshot.held,
             first: snapshot.first,
-            rows: snapshot.rows[..count].iter().map(row_message).collect(),
+            seq,
+            base: based.then_some(told.seq),
+            rows: rows[..count].to_vec(),
             selected_index: snapshot.selected_index,
             view: view_message(view),
         };
         let value = serde_json::to_value(&found).ok()?;
         if count <= 1 || serde_json::to_vec(&value).ok()?.len() <= MESSAGE_BYTES {
-            return Some(value);
+            let now = Told {
+                seq,
+                rows: snapshot.rows[..count]
+                    .iter()
+                    .zip(&wholes[..count])
+                    .enumerate()
+                    .map(|(place, (row, whole))| (row.id.clone(), (place, whole.clone())))
+                    .collect(),
+            };
+            return Some((value, now));
         }
         count /= 2;
     }
@@ -308,7 +399,13 @@ fn message(snapshot: &Snapshot, view: &View, at: f64) -> Option<Value> {
 /// Tells `feed` the table with each new sample and each change of its view, until it ends.
 fn watch(session: &Session, feed: &Subscription) {
     let mut watch = session.sampler.watch();
+    let mut told = Told::default();
+    let mut retold = session.retold();
     while let Some(sample) = watch.latest(&|| feed.is_cancelled()) {
+        if session.retold() != retold {
+            retold = session.retold();
+            told.rows.clear();
+        }
         // A scan costs: it is made only for a filter that asks about ports, and not under the lock.
         let wants_ports = session.table().wants_ports();
         let ports = wants_ports.then(|| session.ports.by_pid());
@@ -320,8 +417,17 @@ fn watch(session: &Session, feed: &Subscription) {
             let snapshot = table.snapshot(&sample.processes, sample.at);
             (snapshot, table.view())
         };
-        if let Some(value) = message(&snapshot, &view, sample.at) {
-            feed.push(value);
+        if let Some((value, now)) = message(&snapshot, &view, sample.at, &told) {
+            if feed.push(value) {
+                told = now;
+            } else {
+                // The page did not get it: what it holds is the message before, which the next one is
+                // not told against. The numbers go on, so that the page sees the gap.
+                told = Told {
+                    seq: now.seq,
+                    rows: HashMap::new(),
+                };
+            }
         }
     }
 }
@@ -419,7 +525,9 @@ mod tests {
             ..Change::default()
         });
         let snapshot = table.snapshot(&sample.processes, sample.at);
-        message(&snapshot, &table.view(), sample.at).unwrap()
+        message(&snapshot, &table.view(), sample.at, &Told::default())
+            .unwrap()
+            .0
     }
 
     #[test]
@@ -469,13 +577,138 @@ mod tests {
                     command: "x".repeat(6000),
                     ..row.process
                 };
+                row.id = Id::Process((at, row.process.start));
                 row
             })
             .collect();
-        let value = message(&snapshot, &table.view(), sample.at).unwrap();
+        let (value, told) = message(&snapshot, &table.view(), sample.at, &Told::default()).unwrap();
         let sent = value["rows"].as_array().unwrap().len();
+        // The page holds the rows it was sent, not the ones cut.
+        assert_eq!(told.rows.len(), sent);
         assert!(sent > 0 && sent < 200, "{sent}");
         assert!(serde_json::to_vec(&value).unwrap().len() <= MESSAGE_BYTES);
         assert_eq!(value["rows"][0]["pid"], 0);
+    }
+
+    /// The rows of `value` as the page reads them: a number is the row at that place of `before`; an
+    /// object with `at` is that row with the members told over it.
+    fn read(value: &Value, before: &[Value]) -> Vec<Value> {
+        value["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                if let Some(place) = row.as_u64() {
+                    return before[usize::try_from(place).unwrap()].clone();
+                }
+                let Some(place) = row["at"].as_u64() else {
+                    return row.clone();
+                };
+                let mut now = before[usize::try_from(place).unwrap()]
+                    .as_object()
+                    .unwrap()
+                    .clone();
+                for (key, member) in row.as_object().unwrap() {
+                    if key != "at" {
+                        now.insert(key.clone(), member.clone());
+                    }
+                }
+                Value::Object(now)
+            })
+            .collect()
+    }
+
+    /// A row as the page uses it: a member that says nothing is as one that is not there.
+    fn plain(row: &Value) -> Value {
+        let mut row = row.as_object().unwrap().clone();
+        if row.get("exited") == Some(&Value::Bool(false)) {
+            row.remove("exited");
+        }
+        if row
+            .get("hits")
+            .is_some_and(|hits| hits.as_object().is_some_and(serde_json::Map::is_empty))
+        {
+            row.remove("hits");
+        }
+        Value::Object(row)
+    }
+
+    #[test]
+    fn a_row_the_page_holds_is_told_by_its_place_and_what_changed() {
+        let mut fixture = Fixture::large();
+        let mut table = Table::new();
+        table.apply(Change {
+            window: Some((0, 40)),
+            filter: Some("a".to_owned()),
+            ..Change::default()
+        });
+        let sample = fixture.sample();
+        let snapshot = table.snapshot(&sample.processes, sample.at);
+        let (first, told) = message(&snapshot, &table.view(), sample.at, &Told::default()).unwrap();
+        assert_eq!((first["seq"].as_u64(), first.get("base")), (Some(1), None));
+        assert!(
+            first["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row.is_object() && row.get("at").is_none())
+        );
+
+        // The same rows again (a move of the cursor): their places, and nothing else.
+        let (again, told_again) = message(&snapshot, &table.view(), sample.at, &told).unwrap();
+        assert_eq!(
+            (again["seq"].as_u64(), again["base"].as_u64()),
+            (Some(2), Some(1))
+        );
+        let places: Vec<u64> = again["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row.as_u64().unwrap())
+            .collect();
+        assert_eq!(places, (0..places.len() as u64).collect::<Vec<_>>());
+        let whole = serde_json::to_vec(&first).unwrap().len();
+        let placed = serde_json::to_vec(&again).unwrap().len();
+        assert!(placed * 20 < whole, "{placed} of {whole}");
+
+        // The next sample: what the page reads is the message it would have had whole.
+        let before = first["rows"].as_array().unwrap().clone();
+        let sample = fixture.sample();
+        let snapshot = table.snapshot(&sample.processes, sample.at);
+        let (next, _) = message(&snapshot, &table.view(), sample.at, &told_again).unwrap();
+        let (fresh, _) = message(&snapshot, &table.view(), sample.at, &Told::default()).unwrap();
+        let read_rows: Vec<Value> = read(&next, &before).iter().map(plain).collect();
+        let fresh_rows: Vec<Value> = fresh["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(plain)
+            .collect();
+        assert_eq!(read_rows, fresh_rows);
+        assert!(
+            serde_json::to_vec(&next).unwrap().len() < serde_json::to_vec(&fresh).unwrap().len()
+        );
+    }
+
+    #[test]
+    fn a_member_that_went_is_told_as_saying_nothing() {
+        let mut fixture = Fixture::large();
+        let sample = fixture.sample();
+        let mut table = Table::new();
+        table.apply(Change {
+            window: Some((0, 20)),
+            filter: Some("a".to_owned()),
+            ..Change::default()
+        });
+        let snapshot = table.snapshot(&sample.processes, sample.at);
+        let (_, told) = message(&snapshot, &table.view(), sample.at, &Told::default()).unwrap();
+        let mut snapshot = table.snapshot(&sample.processes, sample.at);
+        for row in &mut snapshot.rows {
+            row.hits = Hits::default();
+        }
+        let (value, _) = message(&snapshot, &table.view(), sample.at, &told).unwrap();
+        let row = &value["rows"][0];
+        assert_eq!(row["at"], 0);
+        assert_eq!(row["hits"], serde_json::json!({}), "{row}");
     }
 }

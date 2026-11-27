@@ -2,6 +2,7 @@
 //! the way it wants it, what can be done to a process, and the hand on the view (to lend the pane to
 //! a shell); the settings come to it as the page asks for them.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use pencere::ViewControl;
@@ -23,6 +24,9 @@ pub struct Session {
     /// The person's settings file.
     pub settings: Store,
     table: Mutex<Table>,
+    /// How many times the page asked to be told the rows whole again: a watcher that sees it change
+    /// forgets what it told.
+    retold: AtomicU64,
 }
 
 impl Session {
@@ -40,6 +44,7 @@ impl Session {
             view,
             settings: Store::memory(Settings::default()),
             table: Mutex::new(Table::new()),
+            retold: AtomicU64::new(0),
         }
     }
 
@@ -48,6 +53,16 @@ impl Session {
     pub fn with_settings(mut self, settings: Store) -> Self {
         self.settings = settings;
         self
+    }
+
+    /// The page asks for the rows whole: what it was told of them is not what it holds.
+    pub fn retell(&self) {
+        self.retold.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// How many times the page asked for the rows whole.
+    pub fn retold(&self) -> u64 {
+        self.retold.load(Ordering::Relaxed)
     }
 
     /// The process table. It is held for the work of one change or one snapshot, not longer.
